@@ -1,0 +1,1 @@
+/usr/bin/c++ -rdynamic CMakeFiles/redis.dir/main.cpp.o -o redis  redis_client/libredis_client.a -lhiredis 
