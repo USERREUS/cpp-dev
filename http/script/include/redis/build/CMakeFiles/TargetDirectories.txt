@@ -1,0 +1,6 @@
+/var/www/cpp-dev/http/script/include/redis/build/CMakeFiles/redis.dir
+/var/www/cpp-dev/http/script/include/redis/build/CMakeFiles/edit_cache.dir
+/var/www/cpp-dev/http/script/include/redis/build/CMakeFiles/rebuild_cache.dir
+/var/www/cpp-dev/http/script/include/redis/build/redis_client/CMakeFiles/redis_client.dir
+/var/www/cpp-dev/http/script/include/redis/build/redis_client/CMakeFiles/edit_cache.dir
+/var/www/cpp-dev/http/script/include/redis/build/redis_client/CMakeFiles/rebuild_cache.dir

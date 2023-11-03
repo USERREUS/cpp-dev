@@ -13,68 +13,20 @@ string Store::getNextId() {
     return to_string(max_id + 1);
 }
 
-unordered_map<string, string> Store::lineParse(string data) {
-    unordered_map<string, string> dict;
-    string temp = "";
-    int size = data.size();
-    pair<string, string> p;
-    int i = 0;
-    while (i < size) {
-        if (data[i] == '%') {
-            string hex;
-            hex.push_back(data[i + 1]);
-            hex.push_back(data[i + 2]);
-            int dec = stoi(hex, nullptr, 16);
-            temp.push_back(static_cast<char>(dec));
-            i += 3;
-        }
-        else if (data[i] == '=') {
-            p.first = temp;
-            temp = "";
-        }
-        else if (data[i] == '&') {
-            p.second = temp;
-            temp = "";
-            dict[p.first] = p.second;
-        }
-        else if (data[i] == '+') {
-            temp.push_back(' ');
-        }
-        else {
-            temp.push_back(data[i]);
-        }
-        i++;
-    }
-
-    p.second = temp;
-    dict[p.first] = p.second;
-
-    return dict;
-}
-
-string Store::lineUnparse(unordered_map<string, string> dict) {
-    string res;
-    for (auto i : dict) {
-        res += i.first + "=" + i.second + "&";
-    }
-    res.pop_back();
-    return res;
-}
-
-string Store::linePretty(string id, unordered_map<string, string> dict) {
+string Store::linePretty(string id, map<string, string> dict) {
     string res = "ID : " + id + "; ";
     for (auto i : dict) {
-        res += i.first + " : " + i.second + "; ";
+        res += Helper::urlDecode(i.first) + " : " + Helper::urlDecode(i.second) + "; ";
     }
     return res;
 }
 
-unordered_map<string, unordered_map<string, string>> Store::parse(ifstream& in) {
-    unordered_map<string, unordered_map<string, string>> dict;
+map<string, map<string, string>> Store::parse(ifstream& in) {
+    map<string, map<string, string>> dict;
 
     string line;
     while (getline(in, line)) {
-        auto temp = lineParse(line);
+        auto temp = Helper::parseForm(line);
         string ID = temp["id"];
         temp.erase("id");
         dict[ID] = temp;
@@ -84,7 +36,7 @@ unordered_map<string, unordered_map<string, string>> Store::parse(ifstream& in) 
 }
 
 Store::Store() {
-    name = "temp.txt";
+    name = "store.txt";
     ifstream file(name);
     data = parse(file);
     file.close();
@@ -99,17 +51,17 @@ Store::Store(string fileName) {
 
 void Store::TestLineRarse() {
     string line = "id=3&FirstName=Sergey&LastName=Sysoev&Email=test%40gmail.com";
-    auto dict = lineParse(line);
+    auto dict = Helper::parseForm(line);
     for (auto i : dict) {
         cout << i.first << " : " << i.second << endl;
     }
-    string unparse = lineUnparse(dict);
+    string unparse = Helper::encodeData(dict);
     cout << unparse;
 }
 
 string Store::AppendData(string record) {
     string id = getNextId();
-    data[id] = lineParse(record);
+    data[id] = Helper::parseForm(record);
     return "Success AppendData";
 }
 
@@ -142,7 +94,8 @@ string Store::GetAll() {
 Store::~Store() {
     ofstream file(name);
     for (auto i : data) {
-        file << "id=" << i.first << "&" << lineUnparse(data[i.first]) << endl;
+        file << "id=" << i.first << "&" << Helper::encodeData(data[i.first]) << endl;
     }
     file.close();
+
 }

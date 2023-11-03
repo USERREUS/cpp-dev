@@ -323,19 +323,6 @@ public:
     }
 };
 
-void Test() {
-    std::cout << "<p>1. DOCUMENT_ROOT: " << getenv("DOCUMENT_ROOT") << "</p>"       << std::endl;
-    std::cout << "<p>2. HTTP_REFERER: " << getenv("HTTP_REFERER") << "</p>"         << std::endl;
-    std::cout << "<p>3. HTTP_USER_AGENT: " << getenv("HTTP_USER_AGENT") << "</p>"   << std::endl;
-    std::cout << "<p>4. QUERY_STRING: " << getenv("QUERY_STRING") << "</p>"         << std::endl;
-    std::cout << "<p>5. REMOTE_ADDR: " << getenv("REMOTE_ADDR") << "</p>"           << std::endl;
-    std::cout << "<p>6. REQUEST_METHOD: " << getenv("REQUEST_METHOD") << "</p>"     << std::endl;
-    std::cout << "<p>7. SCRIPT_NAME: " << getenv("SCRIPT_NAME") << "</p>"           << std::endl;
-    std::cout << "<p>8. SERVER_NAME: " << getenv("SERVER_NAME") << "</p>"           << std::endl;
-    std::cout << "<p>9. SERVER_SOFTWARE: " << getenv("SERVER_SOFTWARE") << "</p>"   << std::endl;
-    std::cout << "<p>10. HTTP_COOKIE: " << getenv("HTTP_COOKIE") << "</p>"          << std::endl;
-}
-
 int main() {
     HTTP http;
     Store store;

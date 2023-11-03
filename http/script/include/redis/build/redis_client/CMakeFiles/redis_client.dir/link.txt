@@ -1,0 +1,2 @@
+/usr/bin/ar qc libredis_client.a CMakeFiles/redis_client.dir/redis_client.cpp.o
+/usr/bin/ranlib libredis_client.a
