@@ -1,7 +1,6 @@
 #include <iostream>
 
 #include "include/http/http.hpp"
-<<<<<<< HEAD
 #include "include/store/store.hpp"
 
 int main() {
@@ -12,14 +11,6 @@ int main() {
     if (http.getMethod() == "POST") {
 
         store.AppendData(http.body);
-=======
-
-int main() {
-    HTTP http;
-
-    if (http.getMethod() == "POST") {
-
->>>>>>> 5fb75eee5bf7b656a9927332a5ba5a984378777d
         std::cout << "Content-type: text/html\n";
 
         for (auto item : http.bodyParams) {
@@ -27,7 +18,6 @@ int main() {
         }
 
         std::cout << "\n\n";
-<<<<<<< HEAD
         std::cout << "<p>Done</p>\n";
 
     } else if (http.getMethod() == "GET") {
@@ -57,9 +47,6 @@ int main() {
         std::cout << "Content-type: text/html\n\n";
         std::cout << "<p>Unknown method</p>\n";
 
-=======
-        std::cout << "Done";
->>>>>>> 5fb75eee5bf7b656a9927332a5ba5a984378777d
     }
 
     return 0;
