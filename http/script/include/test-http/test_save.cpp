@@ -108,10 +108,10 @@ void parseMultipartFormData(const std::string& data, const std::string& boundary
     }
 
     // Удалить временную директорию и ее содержимое
-    if (tempDirPath) {
-        std::string removeTempDirCmd = "rm -rf " + std::string(tempDirPath);
-        system(removeTempDirCmd.c_str());
-    }
+    // if (tempDirPath) {
+    //     std::string removeTempDirCmd = "rm -rf " + std::string(tempDirPath);
+    //     system(removeTempDirCmd.c_str());
+    // }
 }
 
 int main() {
