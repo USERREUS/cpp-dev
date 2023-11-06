@@ -146,18 +146,18 @@ public:
         cookieData  = Helper::parseCookies(getHeader("HTTP_COOKIE"));
         getData     = Helper::parseForm(getHeader("QUERY_STRING"));
 
-        std::cout << "Content-Type: text/html\r\n\r\n";
+        std::cout << "Content-Type: text/html" << std::endl << std::endl;
+        std::cout << "<p>Test</p>" << std::endl;
 
-        std::string directoryPath = "test";
-        // Создание директории
-        int result = mkdir(directoryPath.c_str(), S_IRWXU | S_IRWXG | S_IRWXO);
+        // Создать временную директорию для хранения файлов
+        char tempDirTemplate[] = "tmpXXXXXX";
+        tempDirPath = mkdtemp(tempDirTemplate);
 
-        if (result == 0) {
-            std::cout << "<html><body><p>Directory created successfully.</p></body></html>\n";
-        } else {
-            std::cout << "Error: Failed to create directory.\n";
+        if (tempDirPath == nullptr) {
+            std::cout << "<p>Failed to create a temporary directory.</p>" << std::endl;
         }
 
+        checkMultipart();
 
         if (getHeader("REQUEST_METHOD") == "POST") {
             if (getHeader("CONTENT_TYPE").find("x-www-form-urlencoded") != std::string::npos) {
@@ -166,7 +166,10 @@ public:
                 postData = Helper::parseForm(body);
             } 
             else if (isMultipart) {
-                //MultipartHandler();
+                MultipartHandler();
+                if (move_uploaded_file(getFile("Smile"), "src")) {
+                    std::cout << "Success" << std::endl;
+                }
             } 
             else {
                 //TODO
@@ -251,13 +254,10 @@ public:
 
     ~HTTP() {
         //Удалить временную директорию и ее содержимое
-        // if (tempDirPath) {
-        //     std::string path = tempDirPath;
-        //     std::string removeTempDirCmd = "rm -rf " + std::string(tempDirPath);
-        //     std::cout << removeTempDirCmd.c_str() << std::endl;
-        //     std::cout << path << std::endl;
-        //     //system(removeTempDirCmd.c_str());
-        // }
+        if (tempDirPath) {
+            std::string removeTempDirCmd = "rm -rf " + std::string(tempDirPath);
+            system(removeTempDirCmd.c_str());
+        }
     }
 
 private:
@@ -289,14 +289,7 @@ private:
 
             startPos = endPos + boundary.size() + 2; // Skip boundary and CRLF
         }
-        // Создать временную директорию для хранения файлов
-        char tempDirTemplate[] = "tmp/uploadXXXXXX";
-        tempDirPath = mkdtemp(tempDirTemplate);
 
-        if (tempDirPath == nullptr) {
-            std::cout << "<p>Failed to create a temporary directory.</p>" << std::endl;
-            return filesData;
-        }
         // Обработка каждой части данных
         for (const std::string& part : parts) {
             // Найдите Content-Disposition и данные внутри каждой части
@@ -356,9 +349,18 @@ private:
                 filesData[file.filename] = file;
             }
         }
+        //Удалить временную директорию и ее содержимое
+        // if (tempDirPath) {
+        //     std::string removeTempDirCmd = "rm -rf " + std::string(tempDirPath);
+        //     //system(removeTempDirCmd.c_str());
+        //     std::cout << "<p>" << removeTempDirCmd << "</p>" << std::endl;
+        // }
+
         return filesData;
     }
     void checkMultipart() {
+        std::cout << "<p>checkMultipart</p>" << std::endl;
+
         std::string method = getHeader("REQUEST_METHOD");
         std::string ctype = getHeader("CONTENT_TYPE");
         if (method == "POST" && ctype.find("multipart/form-data") != std::string::npos) {
@@ -370,6 +372,8 @@ private:
         }
     }
     void MultipartHandler() {
+        std::cout << "<p>MultipartHandler</p>" << std::endl;
+
         size_t contentLength = std::stoul(getHeader("CONTENT_LENGTH"));
         char* dataBuffer = new char[contentLength];
 
