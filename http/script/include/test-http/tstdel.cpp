@@ -9,7 +9,7 @@
 #include <cstring>
 
 // Путь к директории, в которой хранятся файлы
-const char* file_dir = "tmp/";
+const char* file_dir = "src/";
 
 // Функция для вывода HTML-заголовка
 void printHeader() {

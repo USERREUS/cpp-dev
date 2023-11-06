@@ -10,6 +10,7 @@
 #include <fstream>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <random>
 
 typedef struct {
     std::string filename; // реальное имя файла
@@ -113,6 +114,19 @@ public:
 
         return cookieMap;
     }
+    static std::string generateRandomString(int length) {
+        const std::string characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        std::random_device rd;
+        std::mt19937 generator(rd());
+        std::uniform_int_distribution<int> distribution(0, characters.size() - 1);
+
+        std::string randomString;
+        for (int i = 0; i < length; ++i) {
+            randomString += characters[distribution(generator)];
+        }
+
+        return randomString;
+    }
     static std::string urlDecode(const std::string& str) {
         std::string result;
         char hex[3] = {0};
@@ -167,7 +181,7 @@ public:
             } 
             else if (isMultipart) {
                 MultipartHandler();
-                if (move_uploaded_file(getFile("Smile"), "src")) {
+                if (move_uploaded_file(getFile("smile.png"), "src")) {
                     std::cout << "Success" << std::endl;
                 }
             } 
@@ -296,17 +310,18 @@ private:
             size_t contentDispositionPos = part.find("Content-Disposition: form-data;");
             if (contentDispositionPos != std::string::npos) {
                 UploadedFile file;
-                size_t nameStart = part.find("name=\"", contentDispositionPos) + 6;
-                size_t nameEnd = part.find("\"", nameStart);
-                file.filename = part.substr(nameStart, nameEnd - nameStart);
+                // size_t nameStart = part.find("name=\"", contentDispositionPos) + 6;
+                // size_t nameEnd = part.find("\"", nameStart);
+                // file.filename = part.substr(nameStart, nameEnd - nameStart);
 
                 size_t filenameStart = part.find("filename=\"", contentDispositionPos);
                 if (filenameStart != std::string::npos) {
                     filenameStart += 10;
                     size_t filenameEnd = part.find("\"", filenameStart);
+                    file.filename = part.substr(filenameStart, filenameEnd - filenameStart);
                     file.tmp_name = tempDirPath;  // Сохранить файл во временной директории
                     file.tmp_name += "/";
-                    file.tmp_name += part.substr(filenameStart, filenameEnd - filenameStart);
+                    file.tmp_name += Helper::generateRandomString(8) + file.filename;
                     // Извлечение MIME-типа
                     size_t contentTypePos = part.find("Content-Type:", contentDispositionPos);
                     if (contentTypePos != std::string::npos) {
