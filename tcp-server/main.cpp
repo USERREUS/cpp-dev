@@ -259,8 +259,84 @@ std::string readFile(const std::string& filename) {
 }
 
 // Функция для обработки POST-запроса
-void handlePostData(const std::string& postData) {
-    log(INFO, "HTTP Данные POST: " + postData);
+std::string handlePostData(const std::string& httpRequest) {
+    // Определение Content-Type
+    std::string contentType = Helper::extractHeader(httpRequest, headers[CONTENT_TYPE]);
+    std::string httpContentLength = Helper::extractHeader(httpRequest, headers[CONTENT_LENGTH]);
+    size_t contentLength = std::stoi(httpContentLength);
+
+    // Читаем данные из тела POST-запроса
+    size_t bodyStart = httpRequest.find("\r\n\r\n") + 4;
+    std::string postData = httpRequest.substr(bodyStart, contentLength);
+
+    return postData;
+}
+
+std::string getNotFoundResponse() { 
+    std::string htmlResponse = readFile("notfound.html");
+    std::string httpResponse = "HTTP/1.0 404 Not Found\r\n";
+    httpResponse += "Content-Type: text/html\r\n";
+    httpResponse += "Content-Length: " + std::to_string(htmlResponse.size()) + "\r\n\r\n";
+    httpResponse += htmlResponse;
+    return httpResponse;
+}
+
+std::string getOkResponse(const std::string& htmlResponse) {
+    std::string httpResponse = "HTTP/1.0 200 OK\r\n";
+    httpResponse += "Content-Type: text/html\r\n";
+    httpResponse += "Content-Length: " + std::to_string(htmlResponse.size()) + "\r\n\r\n";
+    httpResponse += htmlResponse;
+    return httpResponse;
+}
+
+std::string getResponse(const std::string& fileName) {
+    std::string httpResponse, htmlResponse;
+    htmlResponse = readFile(fileName);
+    if (!htmlResponse.empty()) {
+        httpResponse = getOkResponse(htmlResponse);
+    } else {
+        httpResponse = getNotFoundResponse();
+    }
+    return httpResponse;
+}
+
+const std::string test_email = "test@gmail.com";
+const std::string test_pass = "12345678";
+
+std::string signinHandler(const std::string& httpRequest) {
+    std::string httpResponse, httpMethod;
+    httpMethod = Helper::extractHttpMethod(httpRequest);
+    if (httpMethod == "GET") {
+        httpResponse = getResponse("signin.html");
+    } else if (httpMethod == "POST") {
+        std::string postData = handlePostData(httpRequest);
+        auto auth_params = Helper::parseForm(postData);
+        if (auth_params["email"] != test_email || auth_params["password"] != test_pass) {
+            log(ERROR, "Incorrect params");
+            httpResponse = getResponse("signin.html");
+        } else {
+            httpResponse = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";
+        }
+    } else {
+        httpResponse = getNotFoundResponse();
+    }
+    
+    return httpResponse;
+}
+
+std::string signupHandler(std::string httpMethod) {
+    std::string httpResponse;
+
+    if (httpMethod == "GET") {
+        httpResponse = getResponse("signup.html");
+    } else if (httpMethod == "POST") {
+        log(INFO, "Redirect");
+        httpResponse = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/signin\r\n\r\n";
+    } else {
+        httpResponse = getNotFoundResponse();
+    }
+    
+    return httpResponse;
 }
 
 // Обработка данных от клиента
@@ -292,53 +368,14 @@ void handleClient(int clientSocket) {
     std::string httpContentLength = Helper::extractHeader(httpRequest, headers[CONTENT_LENGTH]);
     log(INFO, "HTTP content-lenght: " + httpContentLength);
 
-    // Если метод POST и есть данные, обрабатываем их
-    if (httpMethod == "POST") {
-        // Определение Content-Type
-        std::string contentType = Helper::extractHeader(httpRequest, headers[CONTENT_TYPE]);
-        log(INFO, "HTTP Content-Type: " + contentType);
-
-        size_t contentLength = std::stoi(httpContentLength);
-
-        // Читаем данные из тела POST-запроса
-        size_t bodyStart = httpRequest.find("\r\n\r\n") + 4;
-        std::string postData = httpRequest.substr(bodyStart, contentLength);
-
-        // Обработка данных POST
-        handlePostData(postData);
-    }
-
-    // Генерация HTML-страницы с заголовками
-    //std::string htmlResponse = "<html><head><title>HTTP Server</title></head><body>"
-    //                           "<h1>HTTP Server</h1></body></html>";
-
-    // Отправка HTML-страницы клиенту
-    //std::string httpResponse = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: " +
-    //                         std::to_string(htmlResponse.size()) + "\r\n\r\n" + htmlResponse;
-
     std::string httpResponse;
 
-    if (httpPath == "/login") {
-        std::string htmlResponse = readFile("login.html");
-
-        if (!htmlResponse.empty()) {
-            httpResponse = "HTTP/1.0 200 OK\r\n";
-            httpResponse += "Content-Type: text/html\r\n";
-            httpResponse += "Content-Length: " + std::to_string(htmlResponse.size()) + "\r\n\r\n";
-            httpResponse += htmlResponse;
-        } else {
-            htmlResponse = readFile("notfound.html");
-            httpResponse = "HTTP/1.0 404 Not Found\r\n";
-            httpResponse += "Content-Type: text/html\r\n";
-            httpResponse += "Content-Length: " + std::to_string(htmlResponse.size()) + "\r\n\r\n";
-            httpResponse += htmlResponse;
-        }
+    if (httpPath == "/signup") {
+        httpResponse = signupHandler(httpMethod);
+    } else if (httpPath == "/signin") {
+        httpResponse = signinHandler(httpRequest);
     } else {
-        std::string htmlResponse = readFile("notfound.html");
-        httpResponse = "HTTP/1.0 404 Not Found\r\n";
-        httpResponse += "Content-Type: text/html\r\n";
-        httpResponse += "Content-Length: " + std::to_string(htmlResponse.size()) + "\r\n\r\n";
-        httpResponse += htmlResponse;
+        httpResponse = getNotFoundResponse();
     }
 
     ssize_t bytesSent = send(clientSocket, httpResponse.c_str(), httpResponse.size(), 0);
