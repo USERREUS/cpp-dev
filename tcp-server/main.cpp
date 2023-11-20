@@ -244,6 +244,117 @@ public:
     }
 };
 
+class Store {
+    std::string name;
+    std::map<std::string, std::map<std::string, std::string>> data;
+
+    std::string getNextId() {
+        int max_id = 0;
+        for (auto i : data) {
+            int id = stoi(i.first);
+            if (id > max_id) {
+                max_id = id;
+            }
+        }
+        return std::to_string(max_id + 1);
+    }
+    std::string linePretty(std::string id, std::map<std::string, std::string> dict) {
+        std::string res = "ID : " + id + "; ";
+        for (auto i : dict) {
+            res += Helper::urlDecode(i.first) + " : " + Helper::urlDecode(i.second) + "; ";
+        }
+        return res;
+    }
+    std::map<std::string, std::map<std::string, std::string>> parse(std::ifstream& in) {
+        std::map<std::string, std::map<std::string, std::string>> dict;
+
+        std::string line;
+        while (std::getline(in, line)) {
+            auto temp = Helper::parseForm(line);
+            std::string ID = temp["id"];
+            temp.erase("id");
+            dict[ID] = temp;
+        }
+
+        return dict;
+    }
+
+public:
+    Store() {
+        name = "store.txt";
+        std::ifstream file(name);
+        data = parse(file);
+        file.close();
+    }
+    Store(std::string fileName) {
+        name = fileName;
+        std::ifstream file(name);
+        data = parse(file);
+        file.close();
+    }
+    std::string AppendData(std::string record) {
+        std::string id = getNextId();
+        data[id] = Helper::parseForm(record);
+        return "Success AppendData";
+    }
+    std::string AppendData(std::map<std::string, std::string> dict) {
+        std::string id = getNextId();
+        std::string record = Helper::encodeData(dict); // without urlEncode
+        data[id] = Helper::parseForm(record);
+        return "Success AppendData";
+    }
+    std::string DeleteOne(std::string ID) {
+        if (data.find(ID) == data.end()) {
+            return "Delete Error. ID not found.";
+        }
+        data.erase(ID);
+        return "Success";
+    }
+    std::string GetOne(std::string ID) {
+        if (data.find(ID) == data.end()) {
+            return "GetOne error : ID not found";
+        }
+        return linePretty(ID, data[ID]);
+    }
+    std::string GetAll() {
+        if (data.size() > 0) {
+            std::string res;
+            for (auto i : data) {
+                res += linePretty(i.first, i.second) + "</p>";
+            }
+            return res;
+        }
+        return "Store is empty";
+    }
+    bool emailValidation(std::string email) {
+        for (auto rec : data) {
+            if (rec.second.find("email") != rec.second.end()) {
+                if (rec.second["email"] == email) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    bool dataValidation(std::string email, std::string pass) {
+        for (auto rec : data) {
+            if (rec.second.find("email") != rec.second.end() && rec.second.find("password") != rec.second.end()) {
+                if (rec.second["email"] == email && rec.second["password"] == pass) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    ~Store() {
+        std::ofstream file(name);
+        for (auto i : data) {
+            file << "id=" << i.first << "&" << Helper::encodeData(data[i.first]) << std::endl;
+        }
+        file.close();
+    }
+};
+
 // Функция для чтения содержимого файла
 std::string readFile(const std::string& filename) {
     std::ifstream file(filename.c_str(), std::ios::in);
@@ -300,8 +411,15 @@ std::string getResponse(const std::string& fileName) {
     return httpResponse;
 }
 
-const std::string test_email = "test@gmail.com";
-const std::string test_pass = "12345678";
+bool signinDataValidation(const std::string& httpRequest) {
+    std::string postData = handlePostData(httpRequest);
+    auto auth_params = Helper::parseForm(postData);
+    if (auth_params.find("email") != auth_params.end() && auth_params.find("password") != auth_params.end()) {
+        Store store = Store();
+        return store.dataValidation(auth_params["email"], auth_params["password"]);
+    }
+    return false;
+}
 
 std::string signinHandler(const std::string& httpRequest) {
     std::string httpResponse, httpMethod;
@@ -309,9 +427,7 @@ std::string signinHandler(const std::string& httpRequest) {
     if (httpMethod == "GET") {
         httpResponse = getResponse("signin.html");
     } else if (httpMethod == "POST") {
-        std::string postData = handlePostData(httpRequest);
-        auto auth_params = Helper::parseForm(postData);
-        if (auth_params["email"] != test_email || auth_params["password"] != test_pass) {
+        if (!signinDataValidation(httpRequest)) {
             log(ERROR, "Incorrect params");
             httpResponse = getResponse("signin.html");
         } else {
@@ -324,14 +440,30 @@ std::string signinHandler(const std::string& httpRequest) {
     return httpResponse;
 }
 
-std::string signupHandler(std::string httpMethod) {
-    std::string httpResponse;
+bool signupDataValidation(const std::string& httpRequest) {
+    Store store = Store();
+    std::string postData = handlePostData(httpRequest);
+    auto params = Helper::parseForm(postData);
+    if (params.find("email") == params.end() || !store.emailValidation(params["email"])) {
+        return false;
+    }
+    store.AppendData(postData);
+    return true;
+}
 
+std::string signupHandler(const std::string& httpRequest) {
+    std::string httpResponse, httpMethod;
+    httpMethod = Helper::extractHttpMethod(httpRequest);
     if (httpMethod == "GET") {
         httpResponse = getResponse("signup.html");
     } else if (httpMethod == "POST") {
-        log(INFO, "Redirect");
-        httpResponse = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/signin\r\n\r\n";
+        if (signupDataValidation(httpRequest)) {
+            log(INFO, "Redirect");
+            httpResponse = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/signin\r\n\r\n";
+        } else {
+            log(ERROR, "Incorrect params");
+            httpResponse = getResponse("signup.html");
+        }
     } else {
         httpResponse = getNotFoundResponse();
     }
@@ -371,7 +503,7 @@ void handleClient(int clientSocket) {
     std::string httpResponse;
 
     if (httpPath == "/signup") {
-        httpResponse = signupHandler(httpMethod);
+        httpResponse = signupHandler(httpRequest);
     } else if (httpPath == "/signin") {
         httpResponse = signinHandler(httpRequest);
     } else {
