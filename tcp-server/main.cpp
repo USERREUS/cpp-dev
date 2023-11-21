@@ -10,6 +10,7 @@
 #include <chrono>
 #include <iomanip>
 #include <fstream>
+#include <hiredis/hiredis.h>
 
 enum LogLevel {
     INFO,
@@ -56,6 +57,108 @@ void log(LogLevel level, const std::string& message) {
     // Выводим сообщение
     std::cout << message << std::endl;
 }
+
+class RedisClient {
+    redisContext* context_;
+
+public:
+    RedisClient(const std::string& host = "127.0.0.1", int port = 6379) {
+        context_ = redisConnect(host.c_str(), port);
+        if (context_ == nullptr || context_->err) {
+            if (context_) {
+                std::cerr << "Ошибка подключения к Redis: " << context_->errstr << std::endl;
+            } else {
+                std::cerr << "Не удалось выделить память для redisContext" << std::endl;
+            }
+            exit(1);
+        }
+    }
+    ~RedisClient() {
+        if (context_) {
+            redisFree(context_);
+        }
+    }
+    void Set(const std::string& key, const std::string& value) {
+        redisReply* reply = (redisReply*)redisCommand(context_, "SET %s %s", key.c_str(), value.c_str());
+        freeReplyObject(reply);
+    }
+    std::string Get(const std::string& key) {
+        redisReply* reply = (redisReply*)redisCommand(context_, "GET %s", key.c_str());
+        std::string value;
+        if (reply->type == REDIS_REPLY_STRING) {
+            value = reply->str;
+        }
+        freeReplyObject(reply);
+        return value;
+    }
+    std::vector<std::string> GetAllKeys() {
+        redisReply* reply = (redisReply*)redisCommand(context_, "KEYS *");
+        std::vector<std::string> keys;
+        if (reply->type == REDIS_REPLY_ARRAY) {
+            for (size_t i = 0; i < reply->elements; ++i) {
+                keys.push_back(reply->element[i]->str);
+            }
+        }
+        freeReplyObject(reply);
+        return keys;
+    }
+    void Delete(const std::string& key) {
+        redisReply* reply = (redisReply*)redisCommand(context_, "DEL %s", key.c_str());
+        freeReplyObject(reply);
+    }
+};
+
+class Session {
+    public:
+    Session() {
+        UUID = generateUUID();
+    }
+    std::string getUUID() {
+        return UUID;
+    }
+    void set(std::string name, std::string value) {
+        client.Set(UUID + name, value);
+    }
+    std::string get(std::string name) {
+        return client.Get(UUID + name);
+    }
+
+    private:
+    const std::string CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij";
+
+    std::string UUID;
+    RedisClient client;
+    
+    std::map<std::string, std::string> data;
+
+    std::string generateUUID() {
+        std::random_device rd; // Инициализируем генератор случайных чисел
+        std::mt19937 gen(rd()); // Используем генератор Mersenne Twister
+        std::uniform_int_distribution<int> distribution(1, 100); // Задаем диапазон случайных чисел
+        std::string uuid = std::string(36,' ');
+        int rnd = 0;
+        int r = 0;
+
+        uuid[8] = '-';
+        uuid[13] = '-';
+        uuid[18] = '-';
+        uuid[23] = '-';
+        
+        uuid[14] = '4';
+
+        for(int i=0;i<36;i++) {
+            if (i != 8 && i != 13 && i != 18 && i != 14 && i != 23) {
+                if (rnd <= 0x02) {
+                    rnd = 0x2000000 + (distribution(gen) * 0x1000000) | 0;
+                }
+            rnd >>= 4;
+            uuid[i] = CHARS[(i == 19) ? ((rnd & 0xf) & 0x3) | 0x8 : rnd & 0xf];
+            }
+        }
+
+        return uuid;
+    }
+};
 
 class Helper {
 public:
@@ -369,6 +472,19 @@ std::string readFile(const std::string& filename) {
     return "";
 }
 
+bool checkSession(const std::string& httpRequest) {
+    std::string cookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
+    auto parsed_cookie = Helper::parseCookies(cookie);
+    if (parsed_cookie.find("session") != parsed_cookie.end()) {
+        Session session;
+        log(WARNING, session.get(parsed_cookie["session"] + "name"));
+        if (session.get(parsed_cookie["session"] + "name") != "") {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Функция для обработки POST-запроса
 std::string handlePostData(const std::string& httpRequest) {
     // Определение Content-Type
@@ -411,6 +527,28 @@ std::string getResponse(const std::string& fileName) {
     return httpResponse;
 }
 
+std::string getHomePage(const std::string& name) {
+    std::string htmlContent = "<!DOCTYPE html>\n"
+                              "<html lang=\"en\">\n"
+                              "<head>\n"
+                              "    <meta charset=\"UTF-8\">\n"
+                              "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+                              "    <title>Home</title>\n"
+                              "</head>\n"
+                              "<body>\n"
+                              "    <h1>Welcome to the Home Page!</h1>\n"
+                              "    <p>Hello, " + name + "! This is your home page.</p>\n"
+                              "</body>\n"
+                              "</html>\n";
+
+    std::string response = "HTTP/1.0 200 OK\r\n";
+    response += "Content-Type: text/html\r\n";
+    response += "Content-Length: " + std::to_string(htmlContent.size()) + "\r\n";
+    response += "\r\n" + htmlContent;
+
+    return response;
+}
+
 bool signinDataValidation(const std::string& httpRequest) {
     std::string postData = handlePostData(httpRequest);
     auto auth_params = Helper::parseForm(postData);
@@ -419,6 +557,27 @@ bool signinDataValidation(const std::string& httpRequest) {
         return store.dataValidation(auth_params["email"], auth_params["password"]);
     }
     return false;
+}
+
+std::string homeHandler(const std::string& httpRequest) {
+    std::string httpResponse, httpMethod;
+    httpMethod = Helper::extractHttpMethod(httpRequest);
+    if (httpMethod == "GET") {
+        if (checkSession(httpRequest)) {
+            log(INFO, "Check Seccess");
+            std::string cookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
+            auto parsed_cookie = Helper::parseCookies(cookie);
+            Session session;
+            std::string name = session.get(parsed_cookie["session"] + "name");
+            httpResponse = getHomePage(name);
+        } else {
+            httpResponse = getNotFoundResponse();
+        }
+    } else {
+        httpResponse = getNotFoundResponse();
+    }
+    
+    return httpResponse;
 }
 
 std::string signinHandler(const std::string& httpRequest) {
@@ -431,7 +590,9 @@ std::string signinHandler(const std::string& httpRequest) {
             log(ERROR, "Incorrect params");
             httpResponse = getResponse("signin.html");
         } else {
-            httpResponse = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";
+            Session session;
+            session.set("name", "TestUset");
+            httpResponse = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\nSet-Cookie: session=" + session.getUUID() + "\r\n\r\n";
         }
     } else {
         httpResponse = getNotFoundResponse();
@@ -506,6 +667,8 @@ void handleClient(int clientSocket) {
         httpResponse = signupHandler(httpRequest);
     } else if (httpPath == "/signin") {
         httpResponse = signinHandler(httpRequest);
+    } else if (httpPath == "/home") {
+        httpResponse = homeHandler(httpRequest);
     } else {
         httpResponse = getNotFoundResponse();
     }

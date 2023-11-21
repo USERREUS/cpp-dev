@@ -66,7 +66,9 @@ class Session {
         UUID = generateUUID();
         data["is_admin"] = "1";
     }
-
+    std::string getUUID() {
+        return UUID;
+    }
     std::string set(std::string name) {
         if(data.find(name) == data.end()) {
             return "Error";
