@@ -581,6 +581,19 @@ std::string homeHandler(const std::string& httpRequest) {
     return httpResponse;
 }
 
+std::string rootHandler(const std::string& httpRequest) {
+    std::string httpResponse, httpMethod;
+    httpMethod = Helper::extractHttpMethod(httpRequest);
+
+    if (checkSession(httpRequest)) {
+        httpResponse = getResponse("rootauthorized.html");
+    } else {
+        httpResponse = getResponse("rootunauthorized.html");
+    }
+    
+    return httpResponse;
+}
+
 std::string signinHandler(const std::string& httpRequest) {
     std::string httpResponse, httpMethod;
     httpMethod = Helper::extractHttpMethod(httpRequest);
@@ -670,6 +683,8 @@ void handleClient(int clientSocket) {
         httpResponse = signinHandler(httpRequest);
     } else if (httpPath == "/home") {
         httpResponse = homeHandler(httpRequest);
+    } else if (httpPath == "/") {
+        httpResponse = rootHandler(httpRequest);
     } else {
         httpResponse = getNotFoundResponse();
     }
