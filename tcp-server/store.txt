@@ -1,1 +1,2 @@
 id=1&confirm-password=12345678&email=test%40gmail.com&password=12345678&username=test
+id=2&confirm-password=00000000&email=sergsysoev%40gmail.com&password=00000000&username=sergsysoev

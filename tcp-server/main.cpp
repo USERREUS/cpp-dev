@@ -4,7 +4,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sstream>
+#include <filesystem>
 #include <map>
 #include <random>
 #include <chrono>
@@ -561,26 +564,6 @@ bool signinDataValidation(const std::string& httpRequest) {
     return false;
 }
 
-std::string homeHandler(const std::string& httpRequest) {
-    std::string httpResponse, httpMethod;
-    httpMethod = Helper::extractHttpMethod(httpRequest);
-    if (httpMethod == "GET") {
-        if (checkSession(httpRequest)) {
-            std::string cookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
-            auto parsed_cookie = Helper::parseCookies(cookie);
-            Session session(parsed_cookie["session"]);
-            std::string name = session.get("name");
-            httpResponse = getHomePage(name);
-        } else {
-            httpResponse = getNotFoundResponse();
-        }
-    } else {
-        httpResponse = getNotFoundResponse();
-    }
-    
-    return httpResponse;
-}
-
 std::string rootHandler(const std::string& httpRequest) {
     std::string httpResponse, httpMethod;
     httpMethod = Helper::extractHttpMethod(httpRequest);
@@ -615,6 +598,14 @@ std::string signinHandler(const std::string& httpRequest) {
     return httpResponse;
 }
 
+void makeUserDir(const std::string& name) {
+    if (mkdir(name.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0) {
+        log(INFO, "Directory created: " + name);
+    } else {
+        log(ERROR, "Error creating directory");
+    }
+}
+
 bool signupDataValidation(const std::string& httpRequest) {
     Store store = Store();
     std::string postData = handlePostData(httpRequest);
@@ -622,6 +613,7 @@ bool signupDataValidation(const std::string& httpRequest) {
     if (params.find("email") == params.end() || !store.emailValidation(params["email"])) {
         return false;
     }
+    makeUserDir(params["email"]);
     store.AppendData(postData);
     return true;
 }
@@ -639,6 +631,94 @@ std::string signupHandler(const std::string& httpRequest) {
             log(ERROR, "Incorrect params");
             httpResponse = getResponse("signup.html");
         }
+    } else {
+        httpResponse = getNotFoundResponse();
+    }
+    
+    return httpResponse;
+}
+
+std::string signoutHandler(const std::string& httpRequest) {
+    return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/\r\nSet-Cookie: session=00000000-0000-0000-0000-000000000000\r\n\r\n";
+}
+
+std::string generateFileList(const std::string& directoryPath) {
+    std::stringstream html;
+
+    html << "<!DOCTYPE html>\n"
+            "<html lang=\"en\">\n"
+            "<head>\n"
+            "    <meta charset=\"UTF-8\">\n"
+            "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+            "    <title>File List</title>\n"
+            "</head>\n"
+            "<body>\n"
+            "    <a href=\"/signout\"><button>Sign Out</button></a>\n"
+            "    <h2>File List</h2>\n"
+            "    <ul>\n";
+
+    for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
+        if (entry.is_regular_file()) {
+            std::string fileName = entry.path().filename().string();
+            html << "        <li>" << fileName << " - "
+                 << "<a href=\"/download?file=" << fileName << "\">Download</a> | "
+                 << "<a href=\"/delete?file=" << fileName << "\">Delete</a>"
+                 << "</li>\n";
+        }
+    }
+
+    html << "    </ul>\n"
+            "</body>\n"
+            "</html>\n";
+
+    return html.str();
+}
+
+std::string homeHandler(const std::string& httpRequest) {
+    std::string httpResponse, httpMethod;
+    httpMethod = Helper::extractHttpMethod(httpRequest);
+    if (httpMethod == "GET") {
+        if (checkSession(httpRequest)) {
+            std::string cookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
+            auto parsed_cookie = Helper::parseCookies(cookie);
+            Session session(parsed_cookie["session"]);
+            std::string name = session.get("name");
+            //httpResponse = getHomePage(name);
+            httpResponse = getOkResponse(generateFileList("sergsysoev%40gmail.com"));
+        } else {
+            httpResponse = getNotFoundResponse();
+        }
+    } else {
+        httpResponse = getNotFoundResponse();
+    }
+    
+    return httpResponse;
+}
+
+std::string sendFile(const std::string& filePath) {
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        log(ERROR, "Error opening file: " + filePath);
+        return getNotFoundResponse();
+    }
+
+    std::ostringstream fileContent;
+    fileContent << file.rdbuf();
+    file.close();
+
+    std::string response = "HTTP/1.1 200 OK\r\n";
+    response += "Content-Type: application/octet-stream\r\n";
+    response += "Content-Disposition: attachment; filename=\"" + std::filesystem::path(filePath).filename().string() + "\"\r\n";
+    response += "Content-Length: " + std::to_string(fileContent.str().size()) + "\r\n";
+    response += "\r\n" + fileContent.str();
+
+    return response;
+}
+
+std::string downloadHandler(const std::string& httpRequest){
+    std::string httpResponse;
+    if (checkSession(httpRequest)) {
+        httpResponse = sendFile("sergsysoev%40gmail.com/images.jpeg");
     } else {
         httpResponse = getNotFoundResponse();
     }
@@ -685,6 +765,10 @@ void handleClient(int clientSocket) {
         httpResponse = homeHandler(httpRequest);
     } else if (httpPath == "/") {
         httpResponse = rootHandler(httpRequest);
+    } else if (httpPath == "/signout") {
+        httpResponse = signoutHandler(httpRequest);
+    } else if (httpPath == "/download") {
+        httpResponse = downloadHandler(httpRequest);
     } else {
         httpResponse = getNotFoundResponse();
     }
