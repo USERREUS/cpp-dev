@@ -715,6 +715,25 @@ std::string sendFile(const std::string& filePath) {
     return response;
 }
 
+void deleteFile(const std::string& filePath) {
+    if (remove(filePath.c_str()) != 0) {
+        log(ERROR, "Error deleting file: " + filePath);
+    } else {
+        log(INFO, "File deleted successfully: " + filePath);
+    }
+}
+
+std::string deleteFileHandler(const std::string& httpRequest) {
+    std::string httpResponse;
+    if (checkSession(httpRequest)) {
+        deleteFile("sergsysoev%40gmail.com/images.jpeg");
+    } else {
+        httpResponse = getNotFoundResponse();
+    }
+    
+    return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";;
+}
+
 std::string downloadHandler(const std::string& httpRequest){
     std::string httpResponse;
     if (checkSession(httpRequest)) {
@@ -769,6 +788,8 @@ void handleClient(int clientSocket) {
         httpResponse = signoutHandler(httpRequest);
     } else if (httpPath == "/download") {
         httpResponse = downloadHandler(httpRequest);
+    } else if (httpPath == "/delete") {
+        httpResponse = deleteFileHandler(httpRequest);
     } else {
         httpResponse = getNotFoundResponse();
     }
