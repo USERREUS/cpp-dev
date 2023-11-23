@@ -113,6 +113,9 @@ class Session {
     Session() {
         UUID = generateUUID();
     }
+    Session(std::string UUID) {
+        this->UUID = UUID;
+    }
     std::string getUUID() {
         return UUID;
     }
@@ -476,9 +479,8 @@ bool checkSession(const std::string& httpRequest) {
     std::string cookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
     auto parsed_cookie = Helper::parseCookies(cookie);
     if (parsed_cookie.find("session") != parsed_cookie.end()) {
-        Session session;
-        log(WARNING, session.get(parsed_cookie["session"] + "name"));
-        if (session.get(parsed_cookie["session"] + "name") != "") {
+        Session session(parsed_cookie["session"]);
+        if (session.get("name") != "") {
             return true;
         }
     }
@@ -564,11 +566,10 @@ std::string homeHandler(const std::string& httpRequest) {
     httpMethod = Helper::extractHttpMethod(httpRequest);
     if (httpMethod == "GET") {
         if (checkSession(httpRequest)) {
-            log(INFO, "Check Seccess");
             std::string cookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
             auto parsed_cookie = Helper::parseCookies(cookie);
-            Session session;
-            std::string name = session.get(parsed_cookie["session"] + "name");
+            Session session(parsed_cookie["session"]);
+            std::string name = session.get("name");
             httpResponse = getHomePage(name);
         } else {
             httpResponse = getNotFoundResponse();
