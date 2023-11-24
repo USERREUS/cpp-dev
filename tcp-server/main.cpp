@@ -464,6 +464,218 @@ public:
     }
 };
 
+// Функция для обработки POST-запроса
+std::string handlePostData(const std::string& httpRequest) {
+    // Определение Content-Type
+    std::string contentType = Helper::extractHeader(httpRequest, headers[CONTENT_TYPE]);
+    std::string httpContentLength = Helper::extractHeader(httpRequest, headers[CONTENT_LENGTH]);
+    size_t contentLength = std::stoi(httpContentLength);
+
+    // Читаем данные из тела POST-запроса
+    size_t bodyStart = httpRequest.find("\r\n\r\n") + 4;
+    std::string postData = httpRequest.substr(bodyStart, contentLength);
+
+    return postData;
+}
+
+//---------------------------------------------------------------------------------------------------------------
+typedef struct {
+    std::string filename; // реальное имя файла
+    std::string type; // MIME-тип файла
+    std::string tmp_name; // временное имя файла
+    int error; // код ошибки (0, если нет)
+    int size; // размер загружаемого файла
+} UploadedFile;
+
+class HTTP {
+public:
+	HTTP(const std::string& httpRequest) {
+        // Создать временную директорию для хранения файлов
+        this->httpRequest = httpRequest;
+
+        try {
+            // Создание временной директории
+            tempDir = std::filesystem::current_path() / "temp";
+            std::filesystem::create_directory(tempDir);
+
+            log(INFO, "Temporary directory created: " + tempDir.string());
+
+            // Удаление временной директории
+            //std::filesystem::remove_all(tempDir);
+            //log(INFO, "Temporary directory delete: " + tempDir.string());
+        } catch (const std::exception& e) {
+            log(ERROR, e.what());
+        }
+
+        checkMultipart();
+        MultipartHandler();
+
+        // if (getHeader("REQUEST_METHOD") == "POST") {
+        //     if (getHeader("CONTENT_TYPE").find("x-www-form-urlencoded") != std::string::npos) {
+        //         std::string body;
+        //         std::cin >> body;
+        //         postData = Helper::parseForm(body);
+        //     } 
+        //     else if (isMultipart) {
+        MultipartHandler();
+        if (move_uploaded_file(getFile("smile.png"), "sergsysoev%40gmail.com")) {
+            log(INFO, "Success");
+        }
+        //     } 
+        //     else {
+        //         //TODO
+        //     }
+        // }
+    }
+
+    UploadedFile getFile(std::string name) { return filesData.find(name) != filesData.end() ? filesData[name] : UploadedFile{}; }
+    
+    // Функция для перемещения загруженного файла
+    bool move_uploaded_file(const UploadedFile& file, const std::string& path) {
+        if (file.error == 0 && !file.tmp_name.empty()) {
+            std::string source = file.tmp_name;
+            std::string destination = path + "/" + file.filename;
+
+            if (rename(source.c_str(), destination.c_str()) == 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    ~HTTP() {
+        //Удалить временную директорию и ее содержимое
+        // if (tempDirPath) {
+        //     std::string removeTempDirCmd = "rm -rf " + std::string(tempDirPath);
+        //     system(removeTempDirCmd.c_str());
+        //     log(INFO, removeTempDirCmd.c_str());
+        // }
+    }
+
+private:
+    std::string httpRequest;
+    std::map <std::string, UploadedFile> filesData;
+    
+    bool isMultipart = false;
+    std::filesystem::path tempDir;
+    std::string boundary;
+    
+    std::map <std::string, UploadedFile> parseMultipartFormData(const std::string &data, const std::string boundary) {
+        log(INFO, "parseMultipartFormData");
+
+        std::map <std::string, UploadedFile> filesData;
+        
+        std::vector<std::string> parts;
+        size_t startPos = 0;
+        size_t endPos = 0;
+
+        while (true) {
+            endPos = data.find(boundary + "--", startPos);
+            if (endPos == std::string::npos) {
+                break;
+            }
+            log(INFO, std::to_string(endPos));
+
+            std::string part = data.substr(startPos, endPos - startPos);
+            parts.push_back(part);
+
+            startPos = endPos + boundary.size() + 2; // Skip boundary and CRLF
+        }
+
+        // Обработка каждой части данных
+        for (const std::string& part : parts) {
+            log(INFO, "for (const std::string& part : parts)");
+            //log(INFO, part);
+            // Найдите Content-Disposition и данные внутри каждой части
+            size_t contentDispositionPos = part.find("Content-Disposition: form-data;");
+            if (contentDispositionPos != std::string::npos) {
+                log(INFO, "if (contentDispositionPos != std::string::npos)");
+                UploadedFile file;
+                // // size_t nameStart = part.find("name=\"", contentDispositionPos) + 6;
+                // // size_t nameEnd = part.find("\"", nameStart);
+                // // file.filename = part.substr(nameStart, nameEnd - nameStart);
+
+                size_t filenameStart = part.find("filename=\"", contentDispositionPos);
+                if (filenameStart != std::string::npos) {
+                    log(INFO, "if (filenameStart != std::string::npos)");
+
+                    filenameStart += 10;
+                    size_t filenameEnd = part.find("\"", filenameStart);
+                    file.filename = part.substr(filenameStart, filenameEnd - filenameStart);
+                    file.tmp_name = tempDir;  // Сохранить файл во временной директории
+                    file.tmp_name += "/";
+                    file.tmp_name += Helper::generateRandomString(8) + file.filename;
+                    // Извлечение MIME-типа
+                    size_t contentTypePos = part.find("Content-Type:", contentDispositionPos);
+                    if (contentTypePos != std::string::npos) {
+                        size_t contentTypeStart = part.find(" ", contentTypePos) + 1;
+                        size_t contentTypeEnd = part.find("\r\n", contentTypeStart);
+                        file.type = part.substr(contentTypeStart, contentTypeEnd - contentTypeStart);
+                    }
+                    // Извлечение размера файла
+                    file.size = part.size() - part.find("\r\n\r\n", contentDispositionPos) - 4;
+                    // Установка ошибки в 0 (нет ошибки)
+                    file.error = 0;
+                    // Открываем временный файл для записи
+                    std::ofstream fileStream(file.tmp_name, std::ios::out | std::ios::binary);
+
+                    if (!fileStream.is_open()) {
+                        log(ERROR, "Failed to open temporary file for writing.");
+                        continue;
+                    }
+                    // Записываем данные во временный файл
+                    const char* fileData = part.c_str() + part.find("\r\n\r\n", contentDispositionPos) + 4;
+                    fileStream.write(fileData, file.size);
+                    fileStream.close();
+                } else {
+                    // Извлечение данных (значения) для полей без файла
+                    size_t dataStart = part.find("\r\n\r\n", contentDispositionPos) + 4;
+                    std::string fieldData = part.substr(dataStart);
+                    // Заполнение свойств для полей без файла
+                    file.tmp_name = "";
+                    file.type = "";
+                    file.size = fieldData.size();
+                    file.error = 0;
+                }
+                log(INFO, "Uploaded File:\n");
+                log(INFO, "File Name: " + file.filename + "\n");
+                log(INFO, "Temporary Name: " + file.tmp_name + "\n");
+                log(INFO, "MIME Type: " + file.type + "\n");
+                log(INFO, "Size: " + std::to_string(file.size) + " bytes\n");
+                log(INFO, "Error Code: " + std::to_string(file.error) + "\n");
+                // Добавление структуры UploadedFile в map файлов
+                filesData[file.filename] = file;
+            }
+        }
+        //Удалить временную директорию и ее содержимое
+        // if (tempDirPath) {
+        //     std::string removeTempDirCmd = "rm -rf " + std::string(tempDirPath);
+        //     //system(removeTempDirCmd.c_str());
+        //     std::cout << "<p>" << removeTempDirCmd << "</p>" << std::endl;
+        // }
+
+        return filesData;
+    }
+    void checkMultipart() {
+        std::string method = Helper::extractHttpMethod(httpRequest);
+        std::string ctype = Helper::extractHeader(httpRequest, headers[CONTENT_TYPE]);
+        if (method == "POST" && ctype.find("multipart/form-data") != std::string::npos) {
+            size_t boundaryStart = ctype.find("boundary=");
+            if (boundaryStart != std::string::npos) {
+                boundary = ctype.substr(boundaryStart + strlen("boundary="));
+                log(INFO, boundary);
+                isMultipart = true;
+            }
+        }
+    }
+    void MultipartHandler() {
+        std::string postData = handlePostData(httpRequest);
+        filesData = parseMultipartFormData(postData, boundary);
+    }
+};
+//------------------------------------------------------------------------------------------------------------
+
 // Функция для чтения содержимого файла
 std::string readFile(const std::string& filename) {
     std::ifstream file(filename.c_str(), std::ios::in);
@@ -488,20 +700,6 @@ bool checkSession(const std::string& httpRequest) {
         }
     }
     return false;
-}
-
-// Функция для обработки POST-запроса
-std::string handlePostData(const std::string& httpRequest) {
-    // Определение Content-Type
-    std::string contentType = Helper::extractHeader(httpRequest, headers[CONTENT_TYPE]);
-    std::string httpContentLength = Helper::extractHeader(httpRequest, headers[CONTENT_LENGTH]);
-    size_t contentLength = std::stoi(httpContentLength);
-
-    // Читаем данные из тела POST-запроса
-    size_t bodyStart = httpRequest.find("\r\n\r\n") + 4;
-    std::string postData = httpRequest.substr(bodyStart, contentLength);
-
-    return postData;
 }
 
 std::string getNotFoundResponse() { 
@@ -654,6 +852,12 @@ std::string generateFileList(const std::string& directoryPath) {
             "</head>\n"
             "<body>\n"
             "    <a href=\"/signout\"><button>Sign Out</button></a>\n"
+            "<form method=\"post\" enctype=\"multipart/form-data\">\n"
+            "    <label for=\"file\">Select File:</label>\n"
+            "    <input type=\"file\" name=\"file\" id=\"file\" required>\n"
+            "    <br>\n"
+            "    <input type=\"submit\" value=\"Upload\">\n"
+            "</form>\n"
             "    <h2>File List</h2>\n"
             "    <ul>\n";
 
@@ -684,6 +888,13 @@ std::string homeHandler(const std::string& httpRequest) {
             Session session(parsed_cookie["session"]);
             std::string name = session.get("name");
             //httpResponse = getHomePage(name);
+            httpResponse = getOkResponse(generateFileList("sergsysoev%40gmail.com"));
+        } else {
+            httpResponse = getNotFoundResponse();
+        }
+    } else if (httpMethod == "POST") {
+        if (checkSession(httpRequest)) {
+            HTTP http(httpRequest);
             httpResponse = getOkResponse(generateFileList("sergsysoev%40gmail.com"));
         } else {
             httpResponse = getNotFoundResponse();
@@ -747,7 +958,7 @@ std::string downloadHandler(const std::string& httpRequest){
 
 // Обработка данных от клиента
 void handleClient(int clientSocket) {
-    char buffer[1024];
+    char buffer[1048576];
     ssize_t bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
 
     if (bytesRead <= 0) {
