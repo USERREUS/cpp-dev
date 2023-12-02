@@ -1,83 +1,59 @@
 #include "http.hpp"
 
-// Функция для логирования
-void log(LogLevel level, const std::string& message) {
-    // Получаем текущую дату и время
-    auto now = std::chrono::system_clock::now();
-    auto timePoint = std::chrono::system_clock::to_time_t(now);
-
-    // Выводим дату-время в формате ГГГГ-ММ-ДД ЧЧ:ММ:СС
-    std::cout << std::put_time(std::localtime(&timePoint), "%Y-%m-%d %H:%M:%S");
-
-    // Выводим уровень логирования
-    switch (level) {
-        case INFO:
-            std::cout << " [INFO] ";
-            break;
-        case WARNING:
-            std::cout << " [WARNING] ";
-            break;
-        case ERROR:
-            std::cout << " [ERROR] ";
-            break;
-        default:
-            std::cout << " [UNKNOWN] ";
-    }
-
-    // Выводим сообщение
-    std::cout << message << std::endl;
-}
-
 HTTP::HTTP(const std::string& httpRequest) : httpRequest(httpRequest) {
-    // Create a temporary directory for storing files
-    this->httpRequest = httpRequest;
 
-    try {
-        // Create a temporary directory
-        tempDir = std::filesystem::current_path() / "temp";
-        std::filesystem::create_directory(tempDir);
+    headers[COOKIE]         = Helper::extractHeader(httpRequest, COOKIE);
+    headers[CONTENT_LENGTH] = Helper::extractHeader(httpRequest, CONTENT_LENGTH);
+    headers[CONTENT_TYPE]   = Helper::extractHeader(httpRequest, CONTENT_TYPE);
+    headers[HTTP_METHOD]    = Helper::extractHttpMethod(httpRequest);
+    headers[PATH]           = Helper::extractPath(httpRequest);
+    headers[QUERY_STRING]   = Helper::extractQueryString(httpRequest);
 
-        log(INFO, "Temporary directory created: " + tempDir.string());
-    } catch (const std::exception& e) {
-        log(ERROR, e.what());
+    cookieData = Helper::parseCookies(headers[COOKIE]);
+    std::string method = headers[HTTP_METHOD];
+
+    if (method == GET) {
+        getData = Helper::parseForm(headers[QUERY_STRING]);
+    } else if (method == POST) {
+        std::string ctype = headers[CONTENT_TYPE];
+        if (ctype.find(URL_ENCODED) != std::string::npos) {
+            isURLEncoded = true;
+            postData = Helper::parseForm(getPostData());
+        } else if (ctype.find(MULTIPART) != std::string::npos) {
+            size_t boundaryStart = ctype.find(BOUNDARY);
+            boundary = ctype.substr(boundaryStart + BOUNDARY.length());
+            isMultipart = true;
+        }
     }
 
-    checkMultipart();
-    MultipartHandler();
-    if (move_uploaded_file(getFile("smile.png"), "sergsysoev%40gmail.com")) {
-        log(INFO, "Success");
-    }
+    // MultipartHandler();
+    // if (move_uploaded_file(getFile("smile.png"), "sergsysoev%40gmail.com")) {
+    //     log(INFO, "Success");
+    // }
 }
 
-UploadedFile HTTP::getFile(std::string name) {
-    return filesData.find(name) != filesData.end() ? filesData[name] : UploadedFile{};
-}
+UploadedFile* HTTP::getFile(std::string name) { return filesData.find(name) != filesData.end() ? filesData[name] : nullptr; }
 
-bool HTTP::move_uploaded_file(const UploadedFile& file, const std::string& path) {
-    if (file.error == 0 && !file.tmp_name.empty()) {
-        std::string source = file.tmp_name;
-        std::string destination = path + "/" + file.filename;
-
+bool HTTP::move_uploaded_file(const UploadedFile* file, const std::string& path) {
+    if (file->error == 0 && !file->tmp_name.empty()) {
+        std::string source = file->tmp_name;
+        std::string destination = path + "/" + file->filename;
         if (rename(source.c_str(), destination.c_str()) == 0) {
             return true;
         }
     }
-
     return false;
 }
 
 HTTP::~HTTP() {
     // Remove the temporary directory and its contents
-    if (std::filesystem::exists(tempDir)) {
-        std::filesystem::remove_all(tempDir);
-        log(INFO, "Temporary directory deleted: " + tempDir.string());
-    }
+    // if (std::filesystem::exists(tempDir)) {
+    //     std::filesystem::remove_all(tempDir);
+    // }
 }
 
-std::map<std::string, UploadedFile> HTTP::parseMultipartFormData(const std::string& data, const std::string boundary) {
-    log(INFO, "parseMultipartFormData");
-
-    std::map<std::string, UploadedFile> filesData;
+std::map<std::string, UploadedFile*> HTTP::parseMultipartFormData(const std::string& data, const std::string boundary) {
+    std::map<std::string, UploadedFile*> filesData;
 
     std::vector<std::string> parts;
     size_t startPos = 0;
@@ -98,77 +74,69 @@ std::map<std::string, UploadedFile> HTTP::parseMultipartFormData(const std::stri
     for (const std::string& part : parts) {
         size_t contentDispositionPos = part.find("Content-Disposition: form-data;");
         if (contentDispositionPos != std::string::npos) {
-            UploadedFile file;
+            UploadedFile* file = new UploadedFile{};
 
             size_t filenameStart = part.find("filename=\"", contentDispositionPos);
             if (filenameStart != std::string::npos) {
                 filenameStart += 10;
                 size_t filenameEnd = part.find("\"", filenameStart);
-                file.filename = part.substr(filenameStart, filenameEnd - filenameStart);
-                file.tmp_name = tempDir / (Helper::generateRandomString(8) + file.filename);
+                file->filename = part.substr(filenameStart, filenameEnd - filenameStart);
+                file->tmp_name = tempDir / (Helper::generateRandomString(8) + file->filename);
 
                 size_t contentTypePos = part.find("Content-Type:", contentDispositionPos);
                 if (contentTypePos != std::string::npos) {
                     size_t contentTypeStart = part.find(" ", contentTypePos) + 1;
                     size_t contentTypeEnd = part.find("\r\n", contentTypeStart);
-                    file.type = part.substr(contentTypeStart, contentTypeEnd - contentTypeStart);
+                    file->type = part.substr(contentTypeStart, contentTypeEnd - contentTypeStart);
                 }
 
-                file.size = part.size() - part.find("\r\n\r\n", contentDispositionPos) - 4;
-                file.error = 0;
+                file->size = part.size() - part.find("\r\n\r\n", contentDispositionPos) - 4;
+                file->error = 0;
 
-                std::ofstream fileStream(file.tmp_name, std::ios::out | std::ios::binary);
+                std::ofstream fileStream(file->tmp_name, std::ios::out | std::ios::binary);
 
                 if (!fileStream.is_open()) {
-                    log(ERROR, "Failed to open temporary file for writing.");
                     continue;
                 }
 
                 const char* fileData = part.c_str() + part.find("\r\n\r\n", contentDispositionPos) + 4;
-                fileStream.write(fileData, file.size);
+                fileStream.write(fileData, file->size);
                 fileStream.close();
             } else {
                 size_t dataStart = part.find("\r\n\r\n", contentDispositionPos) + 4;
                 std::string fieldData = part.substr(dataStart);
-                file.tmp_name = "";
-                file.type = "";
-                file.size = fieldData.size();
-                file.error = 0;
+                file->tmp_name = "";
+                file->type = "";
+                file->size = fieldData.size();
+                file->error = 0;
             }
-
-            log(INFO, "Uploaded File:");
-            log(INFO, "File Name: " + file.filename);
-            log(INFO, "Temporary Name: " + file.tmp_name);
-            log(INFO, "MIME Type: " + file.type);
-            log(INFO, "Size: " + std::to_string(file.size) + " bytes");
-            log(INFO, "Error Code: " + std::to_string(file.error));
-
-            filesData[file.filename] = file;
+            filesData[file->filename] = file;
         }
     }
 
     return filesData;
 }
 
-void HTTP::checkMultipart() {
-    std::string method = Helper::extractHttpMethod(httpRequest);
-    std::string ctype = Helper::extractHeader(httpRequest, "Content-Type");
-    if (method == "POST" && ctype.find("multipart/form-data") != std::string::npos) {
-        size_t boundaryStart = ctype.find("boundary=");
-        if (boundaryStart != std::string::npos) {
-            boundary = ctype.substr(boundaryStart + strlen("boundary="));
-            log(INFO, "Boundary: " + boundary);
-            isMultipart = true;
-        }
-    }
+std::string HTTP::httpPOST(const std::string& name) {
+    return postData.find(name) == postData.end() ? "" : postData[name];
 }
 
 void HTTP::MultipartHandler() {
-    std::string postData = handlePostData(httpRequest);
+    std::string postData = getPostData();
     filesData = parseMultipartFormData(postData, boundary);
 }
 
-std::string HTTP::handlePostData(const std::string& httpRequest) {
-    size_t pos = httpRequest.find("\r\n\r\n");
-    return pos != std::string::npos ? httpRequest.substr(pos + 4) : "";
+std::string HTTP::getHeader(const std::string& name) { return headers.find(name) != headers.end() ? headers[name] : ""; }
+
+// Функция для обработки POST-запроса
+std::string HTTP::getPostData() {
+    std::string contentType         = headers[CONTENT_TYPE];
+    std::string httpContentLength   = headers[CONTENT_LENGTH];
+    size_t contentLength            = std::stoi(httpContentLength);
+    size_t bodyStart                = httpRequest.find("\r\n\r\n") + 4;
+    std::string postData            = httpRequest.substr(bodyStart, contentLength);
+
+    return postData;
 }
+
+std::string HTTP::getCookie(const std::string& name) { return cookieData.find(name) != cookieData.end() ? cookieData[name] : ""; }

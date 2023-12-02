@@ -1,117 +1,90 @@
 #include "store.hpp"
 
-std::string Store::getNextId() {
-    int max_id = 0;
-    for (auto i : data) {
-        int id = std::stoi(i.first);
-        if (id > max_id) {
-            max_id = id;
-        }
-    }
-    return std::to_string(max_id + 1);
-}
-
-std::string Store::linePretty(std::string id, std::map<std::string, std::string> dict) {
-    std::string res = "ID : " + id + "; ";
-    for (auto i : dict) {
-        res += Helper::urlDecode(i.first) + " : " + Helper::urlDecode(i.second) + "; ";
-    }
-    return res;
-}
-
 std::map<std::string, std::map<std::string, std::string>> Store::parse(std::ifstream& in) {
     std::map<std::string, std::map<std::string, std::string>> dict;
 
     std::string line;
     while (std::getline(in, line)) {
         auto temp = Helper::parseForm(line);
-        std::string ID = temp["id"];
-        temp.erase("id");
-        dict[ID] = temp;
+        std::string login = temp["login"];
+        temp.erase("login");
+        dict[login] = temp;
     }
 
     return dict;
 }
 
+std::string Store::hashPassword(const std::string& password) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    SHA256_Update(&sha256, password.c_str(), password.length());
+    SHA256_Final(hash, &sha256);
+
+    std::string hashedPassword = "";
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        char hex[3];
+        sprintf(hex, "%02x", hash[i]);
+        hashedPassword += hex;
+    }
+
+    return hashedPassword;
+}
+
 Store::Store() {
-    name = "store.txt";
-    std::ifstream file(name);
-    data = parse(file);
-    file.close();
+    in.open(fileName);
+    if (!in) {
+        Helper::log(ERROR, "Store open error");
+    } else {
+        data = parse(in);
+        in.close();
+    }
 }
 
 Store::Store(std::string fileName) {
-    name = fileName;
-    std::ifstream file(name);
-    data = parse(file);
-    file.close();
-}
-
-std::string Store::AppendData(std::string record) {
-    std::string id = getNextId();
-    data[id] = Helper::parseForm(record);
-    return "Success AppendData";
-}
-
-std::string Store::AppendData(std::map<std::string, std::string> dict) {
-    std::string id = getNextId();
-    std::string record = Helper::encodeData(dict); // without urlEncode
-    data[id] = Helper::parseForm(record);
-    return "Success AppendData";
-}
-
-std::string Store::DeleteOne(std::string ID) {
-    if (data.find(ID) == data.end()) {
-        return "Delete Error. ID not found.";
+    in.open(fileName);
+    if (!in) {
+        Helper::log(ERROR, "Store open error");
+    } else {
+        data = parse(in);
+        in.close();
     }
-    data.erase(ID);
-    return "Success";
 }
 
-std::string Store::GetOne(std::string ID) {
-    if (data.find(ID) == data.end()) {
-        return "GetOne error : ID not found";
-    }
-    return linePretty(ID, data[ID]);
-}
-
-std::string Store::GetAll() {
-    if (data.size() > 0) {
-        std::string res;
-        for (auto i : data) {
-            res += linePretty(i.first, i.second) + "</p>";
-        }
-        return res;
-    }
-    return "Store is empty";
-}
-
-bool Store::emailValidation(std::string email) {
-    for (auto rec : data) {
-        if (rec.second.find("email") != rec.second.end()) {
-            if (rec.second["email"] == email) {
-                return false;
-            }
+bool Store::SignUP(std::map<std::string, std::string>& dict) {
+        if (dict.find(LOGIN) != dict.end() && dict.find(PASSWORD) != dict.end()) {
+        std::string login = dict[LOGIN];
+        std::string pass = dict[PASSWORD];
+        if (data.find(login) == data.end()) {
+            dict.erase(LOGIN);
+            dict[PASSWORD] = hashPassword(pass);
+            data[login] = dict;
+            return true;
         }
     }
-    return true;
+    Helper::log(ERROR, "Store: SignUP Error.");
+    return false;
 }
 
-bool Store::dataValidation(std::string email, std::string pass) {
-    for (auto rec : data) {
-        if (rec.second.find("email") != rec.second.end() && rec.second.find("password") != rec.second.end()) {
-            if (rec.second["email"] == email && rec.second["password"] == pass) {
-                return true;
-            }
+bool Store::SignIN(std::map<std::string, std::string>& dict) {
+    if (dict.find(LOGIN) != dict.end() && dict.find(PASSWORD) != dict.end()) {
+        std::string login = dict[LOGIN];
+        std::string pass = dict[PASSWORD];
+        if (data.find(login) != data.end() && data[login][PASSWORD] == hashPassword(pass)) {
+            return true;
         }
     }
     return false;
 }
 
 Store::~Store() {
-    std::ofstream file(name);
-    for (auto i : data) {
-        file << "id=" << i.first << "&" << Helper::encodeData(data[i.first]) << std::endl;
+    out.open(fileName);
+    if (!out) {
+        Helper::log(ERROR, "Error store close");
+    } else {
+        for (auto rec : data) {
+            out << "login=" << rec.first << "&" << Helper::encodeData(data[rec.first]) << std::endl;
+        }
+        out.close();
     }
-    file.close();
 }

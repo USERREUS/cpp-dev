@@ -1,2 +1,2 @@
-id=1&confirm-password=12345678&email=test%40gmail.com&password=12345678&username=test
-id=2&confirm-password=00000000&email=sergsysoev%40gmail.com&password=00000000&username=sergsysoev
+login=test&password=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+login=user&password=ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f

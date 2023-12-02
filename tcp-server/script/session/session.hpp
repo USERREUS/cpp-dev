@@ -11,8 +11,11 @@ public:
     Session();
     Session(std::string UUID);
     std::string getUUID();
+    void setUUID(std::string UUID);
     void set(std::string name, std::string value);
     std::string get(std::string name);
+    bool IsValid();
+    ~Session();
 
 private:
     const std::string CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij";

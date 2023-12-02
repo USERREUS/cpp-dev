@@ -1,9 +1,57 @@
 #include "helper.hpp"
+#include <iostream>
+#include <cstring>
+#include <unistd.h>
 #include <sstream>
-#include <cctype>
-#include <cstdlib>
+#include <filesystem>
+#include <map>
 #include <random>
+#include <chrono>
+#include <iomanip>
+#include <fstream>
 
+// Функция для логирования
+void Helper::log(LogLevel level, const std::string& message) {
+    // Получаем текущую дату и время
+    auto now = std::chrono::system_clock::now();
+    auto timePoint = std::chrono::system_clock::to_time_t(now);
+
+    // Выводим дату-время в формате ГГГГ-ММ-ДД ЧЧ:ММ:СС
+    std::cout << std::put_time(std::localtime(&timePoint), "%Y-%m-%d %H:%M:%S");
+
+    // Выводим уровень логирования
+    switch (level) {
+        case INFO:
+            std::cout << " [INFO] ";
+            break;
+        case DEBUG:
+            std::cout << " [DEBUG] ";
+            break;
+        case ERROR:
+            std::cout << " [ERROR] ";
+            break;
+        default:
+            std::cout << " [UNKNOWN] ";
+    }
+
+    // Выводим сообщение
+    std::cout << message << std::endl;
+}
+
+std::string Helper::readFile(const std::string& filename) {
+    std::ifstream file(filename.c_str(), std::ios::in);
+
+    if (file) {
+        std::ostringstream contents;
+        contents << file.rdbuf();
+        file.close();
+        return contents.str();
+    }
+
+    return "";
+}
+
+//FIX!!!
 std::string Helper::encodeData(const std::map<std::string, std::string>& data) {
     std::string result;
     for (const auto& pair : data) {
@@ -34,12 +82,6 @@ std::string Helper::urlEncode(const std::string& data) {
     return escaped.str();
 }
 
-std::string Helper::getenvHandler(const char* name) {
-    if (getenv(name) != nullptr)
-        return getenv(name);
-    return "";
-}
-
 std::string Helper::trim(const std::string& s) {
     size_t start = s.find_first_not_of(" \t\n\r\f\v");
     size_t end = s.find_last_not_of(" \t\n\r\f\v");
@@ -51,6 +93,7 @@ std::string Helper::trim(const std::string& s) {
     }
 }
 
+//FIX
 std::map<std::string, std::string> Helper::parseForm(const std::string &input) {
     std::map<std::string, std::string> result;
     std::size_t pos = 0;
@@ -82,6 +125,7 @@ std::map<std::string, std::string> Helper::parseForm(const std::string &input) {
     return result;
 }
 
+//FIX
 std::map<std::string, std::string> Helper::parseCookies(const std::string& cookies) {
     std::map<std::string, std::string> cookieMap;
     std::istringstream cookieStream(cookies);

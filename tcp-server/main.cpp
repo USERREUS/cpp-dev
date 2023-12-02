@@ -19,75 +19,42 @@
 #include "script/session/session.hpp"
 #include "script/http/http.hpp"
 
-// Функция для обработки POST-запроса
-std::string handlePostData(const std::string& httpRequest) {
-    // Определение Content-Type
-    std::string contentType = Helper::extractHeader(httpRequest, headers[CONTENT_TYPE]);
-    std::string httpContentLength = Helper::extractHeader(httpRequest, headers[CONTENT_LENGTH]);
-    size_t contentLength = std::stoi(httpContentLength);
+const std::string PAGE_NOT_FOUND = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>404 Not Found</title><style>body {font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; } .container { text-align: center; } h1 { color: #333; } p { color: #666;}</style></head><body><div class=\"container\"><h1>404 Not Found</h1><p>The requested page could not be found.</p></div></body></html>";
 
-    // Читаем данные из тела POST-запроса
-    size_t bodyStart = httpRequest.find("\r\n\r\n") + 4;
-    std::string postData = httpRequest.substr(bodyStart, contentLength);
+const std::string CODE_NOT_FOUND_404 = "404 Not Found";
+const std::string CODE_OK_200 = "200 OK";
 
-    return postData;
-}
+const std::string HTML_FILEPATH_ROOT_UNAUTORIZED = "html/rootunauthorized.html";
+const std::string HTML_FILEPATH_ROOT_AUTORIZED   = "html/rootauthorized.html";
+const std::string HTML_FILEPATH_SIGNUP = "html/signup.html";
+const std::string HTML_FILEPATH_SIGNIN = "html/signin.html";
+const std::string HTML_FILEPATH_SIGNUP_ERR = "html/signuperr.html";
+const std::string HTML_FILEPATH_SIGNIN_ERR = "html/signinerr.html";
 
-// Функция для чтения содержимого файла
-std::string readFile(const std::string& filename) {
-    std::ifstream file(filename.c_str(), std::ios::in);
+const std::string REDIRECT_SIGNIN   = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/signin\r\n\r\n";
+const std::string REDIRECT_HOME     = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n";
 
-    if (file) {
-        std::ostringstream contents;
-        contents << file.rdbuf();
-        file.close();
-        return contents.str();
-    }
-
-    return "";
-}
-
-bool checkSession(const std::string& httpRequest) {
-    std::string cookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
-    auto parsed_cookie = Helper::parseCookies(cookie);
-    if (parsed_cookie.find("session") != parsed_cookie.end()) {
-        Session session(parsed_cookie["session"]);
-        if (session.get("name") != "") {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::string getNotFoundResponse() { 
-    std::string htmlResponse = readFile("hmtl/notfound.html");
-    std::string httpResponse = "HTTP/1.0 404 Not Found\r\n";
+std::string generateHTTPResponse(const std::string& code, const std::string& html)
+{
+    std::string httpResponse = "HTTP/1.0 " + code + "\r\n";
     httpResponse += "Content-Type: text/html\r\n";
-    httpResponse += "Content-Length: " + std::to_string(htmlResponse.size()) + "\r\n\r\n";
-    httpResponse += htmlResponse;
-    return httpResponse;
-}
-
-std::string getOkResponse(const std::string& htmlResponse) {
-    std::string httpResponse = "HTTP/1.0 200 OK\r\n";
-    httpResponse += "Content-Type: text/html\r\n";
-    httpResponse += "Content-Length: " + std::to_string(htmlResponse.size()) + "\r\n\r\n";
-    httpResponse += htmlResponse;
+    httpResponse += "Content-Length: " + std::to_string(html.size()) + "\r\n\r\n";
+    httpResponse += html;
     return httpResponse;
 }
 
 std::string getResponse(const std::string& fileName) {
     std::string httpResponse, htmlResponse;
-    htmlResponse = readFile(fileName);
+    htmlResponse = Helper::readFile(fileName);
     if (!htmlResponse.empty()) {
-        httpResponse = getOkResponse(htmlResponse);
+        httpResponse = generateHTTPResponse(CODE_OK_200, htmlResponse);
     } else {
-        httpResponse = getNotFoundResponse();
+        httpResponse = generateHTTPResponse(CODE_NOT_FOUND_404, PAGE_NOT_FOUND);
     }
     return httpResponse;
 }
 
-std::string getHomePage(const std::string& name) {
+std::string getHomePage(const std::string& login) {
     std::string htmlContent = "<!DOCTYPE html>\n"
                               "<html lang=\"en\">\n"
                               "<head>\n"
@@ -97,100 +64,92 @@ std::string getHomePage(const std::string& name) {
                               "</head>\n"
                               "<body>\n"
                               "    <h1>Welcome to the Home Page!</h1>\n"
-                              "    <p>Hello, " + name + "! This is your home page.</p>\n"
+                              "    <p>Hello, " + login + "! This is your home page.</p>\n"
                               "</body>\n"
                               "</html>\n";
 
-    std::string response = "HTTP/1.0 200 OK\r\n";
-    response += "Content-Type: text/html\r\n";
-    response += "Content-Length: " + std::to_string(htmlContent.size()) + "\r\n";
-    response += "\r\n" + htmlContent;
-
-    return response;
+    return generateHTTPResponse(CODE_OK_200, htmlContent);
 }
 
-bool signinDataValidation(const std::string& httpRequest) {
-    std::string postData = handlePostData(httpRequest);
-    auto auth_params = Helper::parseForm(postData);
-    if (auth_params.find("email") != auth_params.end() && auth_params.find("password") != auth_params.end()) {
-        Store store = Store();
-        return store.dataValidation(auth_params["email"], auth_params["password"]);
+// bool signinDataValidation(const std::string& httpRequest) {
+//     std::string postData = handlePostData(httpRequest);
+//     auto auth_params = Helper::parseForm(postData);
+//     if (auth_params.find("email") != auth_params.end() && auth_params.find("password") != auth_params.end()) {
+//         Store store = Store();
+//         return store.dataValidation(auth_params["email"], auth_params["password"]);
+//     }
+//     return false;
+// }
+
+std::string rootHandler(Session& session) { 
+    if(session.IsValid()) {
+        Helper::log(INFO, "Valid Session");
+        return getResponse(HTML_FILEPATH_ROOT_AUTORIZED);
     }
-    return false;
+    Helper::log(INFO, "Not valid Session");
+    return getResponse(HTML_FILEPATH_ROOT_UNAUTORIZED);
 }
+//std::string homeHandler(HTTP* http) { return http->IsValidSession() ? generateHTTPResponse(http_cns[OK_200], generateFileList(http->getSessionVal("login"))) : generateHTTPResponse(http_cns[NOT_FOUND_404], html_pns[NOT_FOUND]); }
 
-std::string rootHandler(const std::string& httpRequest) {
-    std::string httpResponse, httpMethod;
-    httpMethod = Helper::extractHttpMethod(httpRequest);
-
-    if (checkSession(httpRequest)) {
-        httpResponse = getResponse("html/rootauthorized.html");
-    } else {
-        httpResponse = getResponse("html/rootunauthorized.html");
-    }
-    
-    return httpResponse;
-}
-
-std::string signinHandler(const std::string& httpRequest) {
-    std::string httpResponse, httpMethod;
-    httpMethod = Helper::extractHttpMethod(httpRequest);
-    if (httpMethod == "GET") {
-        httpResponse = getResponse("html/signin.html");
-    } else if (httpMethod == "POST") {
-        if (!signinDataValidation(httpRequest)) {
-            log(ERROR, "Incorrect params");
-            httpResponse = getResponse("html/signin.html");
-        } else {
-            Session session;
-            session.set("name", "TestUset");
-            httpResponse = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\nSet-Cookie: session=" + session.getUUID() + "\r\n\r\n";
+std::string signinValidationHandler(HTTP& http, Store& store) {
+    std::string httpMethod = http.getHeader(HTTP_METHOD);
+    if (httpMethod == POST) {
+        std::string login = http.httpPOST(LOGIN);
+        std::string pass  = http.httpPOST(PASSWORD);
+        if (pass != "" && login != "") {
+            std::map<std::string, std::string> signup_params;
+            signup_params[LOGIN]    = login;
+            signup_params[PASSWORD] = pass;
+            if (store.SignIN(signup_params)) {
+                Session session;
+                session.set(LOGIN, login);
+                return REDIRECT_HOME + "Set-Cookie: session=" + session.getUUID() + "; path=/\r\n\r\n";
+            }
+            Helper::log(ERROR, "signinValidationHandler: incorrect params");
+            return getResponse(HTML_FILEPATH_SIGNIN_ERR);
         }
-    } else {
-        httpResponse = getNotFoundResponse();
     }
-    
-    return httpResponse;
+
+    return generateHTTPResponse(CODE_NOT_FOUND_404, PAGE_NOT_FOUND);
 }
 
-void makeUserDir(const std::string& name) {
-    if (mkdir(name.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0) {
-        log(INFO, "Directory created: " + name);
-    } else {
-        log(ERROR, "Error creating directory");
-    }
-}
+// void makeUserDir(const std::string& name) {
+//     if (mkdir(name.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0) {
+//         log(INFO, "Directory created: " + name);
+//     } else {
+//         log(ERROR, "Error creating directory");
+//     }
+// }
 
-bool signupDataValidation(const std::string& httpRequest) {
-    Store store = Store();
-    std::string postData = handlePostData(httpRequest);
-    auto params = Helper::parseForm(postData);
-    if (params.find("email") == params.end() || !store.emailValidation(params["email"])) {
-        return false;
-    }
-    makeUserDir(params["email"]);
-    store.AppendData(postData);
-    return true;
-}
+// bool signupDataValidation(const std::string& httpRequest) {
+//     Store store = Store();
+//     std::string postData = handlePostData(httpRequest);
+//     auto params = Helper::parseForm(postData);
+//     if (params.find("email") == params.end() || !store.emailValidation(params["email"])) {
+//         return false;
+//     }
+//     makeUserDir(params["email"]);
+//     store.AppendData(postData);
+//     return true;
+// }
 
-std::string signupHandler(const std::string& httpRequest) {
-    std::string httpResponse, httpMethod;
-    httpMethod = Helper::extractHttpMethod(httpRequest);
-    if (httpMethod == "GET") {
-        httpResponse = getResponse("html/signup.html");
-    } else if (httpMethod == "POST") {
-        if (signupDataValidation(httpRequest)) {
-            log(INFO, "Redirect");
-            httpResponse = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/signin\r\n\r\n";
-        } else {
-            log(ERROR, "Incorrect params");
-            httpResponse = getResponse("html/signup.html");
+std::string signupValidationHandler(HTTP& http, Store& store) {
+    std::string httpMethod = http.getHeader(HTTP_METHOD);
+    if (httpMethod == POST) {
+        std::string login = http.httpPOST(LOGIN);
+        std::string pass  = http.httpPOST(PASSWORD);
+        if (pass != "" && login != "") {
+            std::map<std::string, std::string> signup_params;
+            signup_params[LOGIN]    = login;
+            signup_params[PASSWORD] = pass;
+            if (store.SignUP(signup_params)) {
+                return REDIRECT_SIGNIN;
+            }
+            Helper::log(ERROR, "signupValidationHandler: incorrect params");
+            return getResponse(HTML_FILEPATH_SIGNUP_ERR);
         }
-    } else {
-        httpResponse = getNotFoundResponse();
     }
-    
-    return httpResponse;
+    return generateHTTPResponse(CODE_NOT_FOUND_404, PAGE_NOT_FOUND);
 }
 
 std::string signoutHandler(const std::string& httpRequest) {
@@ -235,91 +194,63 @@ std::string generateFileList(const std::string& directoryPath) {
     return html.str();
 }
 
-std::string homeHandler(const std::string& httpRequest) {
-    std::string httpResponse, httpMethod;
-    httpMethod = Helper::extractHttpMethod(httpRequest);
-    if (httpMethod == "GET") {
-        if (checkSession(httpRequest)) {
-            std::string cookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
-            auto parsed_cookie = Helper::parseCookies(cookie);
-            Session session(parsed_cookie["session"]);
-            std::string name = session.get("name");
-            //httpResponse = getHomePage(name);
-            httpResponse = getOkResponse(generateFileList("sergsysoev%40gmail.com"));
-        } else {
-            httpResponse = getNotFoundResponse();
-        }
-    } else if (httpMethod == "POST") {
-        if (checkSession(httpRequest)) {
-            HTTP http(httpRequest);
-            httpResponse = getOkResponse(generateFileList("sergsysoev%40gmail.com"));
-        } else {
-            httpResponse = getNotFoundResponse();
-        }
-    } else {
-        httpResponse = getNotFoundResponse();
-    }
+// std::string sendFile(const std::string& filePath) {
+//     std::ifstream file(filePath, std::ios::binary);
+//     if (!file.is_open()) {
+//         log(ERROR, "Error opening file: " + filePath);
+//         return getNotFoundResponse();
+//     }
+
+//     std::ostringstream fileContent;
+//     fileContent << file.rdbuf();
+//     file.close();
+
+//     std::string response = "HTTP/1.1 200 OK\r\n";
+//     response += "Content-Type: application/octet-stream\r\n";
+//     response += "Content-Disposition: attachment; filename=\"" + std::filesystem::path(filePath).filename().string() + "\"\r\n";
+//     response += "Content-Length: " + std::to_string(fileContent.str().size()) + "\r\n";
+//     response += "\r\n" + fileContent.str();
+
+//     return response;
+// }
+
+// void deleteFile(const std::string& filePath) {
+//     if (remove(filePath.c_str()) != 0) {
+//         log(ERROR, "Error deleting file: " + filePath);
+//     } else {
+//         log(INFO, "File deleted successfully: " + filePath);
+//     }
+// }
+
+// std::string deleteFileHandler(const std::string& httpRequest) {
+//     std::string httpResponse;
+//     if (checkSession(httpRequest)) {
+//         deleteFile("sergsysoev%40gmail.com/images.jpeg");
+//     } else {
+//         httpResponse = getNotFoundResponse();
+//     }
     
-    return httpResponse;
-}
+//     return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";;
+// }
 
-std::string sendFile(const std::string& filePath) {
-    std::ifstream file(filePath, std::ios::binary);
-    if (!file.is_open()) {
-        log(ERROR, "Error opening file: " + filePath);
-        return getNotFoundResponse();
-    }
-
-    std::ostringstream fileContent;
-    fileContent << file.rdbuf();
-    file.close();
-
-    std::string response = "HTTP/1.1 200 OK\r\n";
-    response += "Content-Type: application/octet-stream\r\n";
-    response += "Content-Disposition: attachment; filename=\"" + std::filesystem::path(filePath).filename().string() + "\"\r\n";
-    response += "Content-Length: " + std::to_string(fileContent.str().size()) + "\r\n";
-    response += "\r\n" + fileContent.str();
-
-    return response;
-}
-
-void deleteFile(const std::string& filePath) {
-    if (remove(filePath.c_str()) != 0) {
-        log(ERROR, "Error deleting file: " + filePath);
-    } else {
-        log(INFO, "File deleted successfully: " + filePath);
-    }
-}
-
-std::string deleteFileHandler(const std::string& httpRequest) {
-    std::string httpResponse;
-    if (checkSession(httpRequest)) {
-        deleteFile("sergsysoev%40gmail.com/images.jpeg");
-    } else {
-        httpResponse = getNotFoundResponse();
-    }
+// std::string downloadHandler(const std::string& httpRequest){
+//     std::string httpResponse;
+//     if (checkSession(httpRequest)) {
+//         httpResponse = sendFile("sergsysoev%40gmail.com/images.jpeg");
+//     } else {
+//         httpResponse = getNotFoundResponse();
+//     }
     
-    return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";;
-}
-
-std::string downloadHandler(const std::string& httpRequest){
-    std::string httpResponse;
-    if (checkSession(httpRequest)) {
-        httpResponse = sendFile("sergsysoev%40gmail.com/images.jpeg");
-    } else {
-        httpResponse = getNotFoundResponse();
-    }
-    
-    return httpResponse;
-}
+//     return httpResponse;
+// }
 
 // Обработка данных от клиента
 void handleClient(int clientSocket) {
-    char buffer[1048576];
+    char buffer[1048576]; //1 MB
     ssize_t bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
 
     if (bytesRead <= 0) {
-        log(ERROR, "Ошибка при чтении данных от клиента");
+        Helper::log(ERROR, "Ошибка при чтении данных от клиента");
         close(clientSocket);
         return;
     }
@@ -327,45 +258,40 @@ void handleClient(int clientSocket) {
     // Разбиение HTTP-запроса на заголовки
     std::string httpRequest(buffer, bytesRead);
 
-    std::string httpMethod = Helper::extractHttpMethod(httpRequest);
-    log(INFO, "HTTP метод: " + httpMethod);
-    
-    std::string httpPath = Helper::extractPath(httpRequest);
-    log(INFO, "HTTP path: " + httpPath);
-
-    std::string httpQueryString = Helper::extractQueryString(httpRequest);
-    log(INFO, "HTTP query string: " + httpQueryString);
-
-    std::string httpCookie = Helper::extractHeader(httpRequest, headers[COOKIE]);
-    log(INFO, "HTTP cookie: " + httpCookie);
-
-    std::string httpContentLength = Helper::extractHeader(httpRequest, headers[CONTENT_LENGTH]);
-    log(INFO, "HTTP content-lenght: " + httpContentLength);
-
+    HTTP http(httpRequest);
     std::string httpResponse;
+    std::string httpPath = http.getHeader(PATH);
+    std::string uuid = http.getCookie(SESSION_UUID);
+    Helper::log(INFO, uuid);
+    Session session(uuid);
+    Store store;
 
     if (httpPath == "/signup") {
-        httpResponse = signupHandler(httpRequest);
+        httpResponse = getResponse(HTML_FILEPATH_SIGNUP);
+    } else if (httpPath == "/signup/validation") {
+        httpResponse = signupValidationHandler(http, store);
     } else if (httpPath == "/signin") {
-        httpResponse = signinHandler(httpRequest);
+        httpResponse = getResponse(HTML_FILEPATH_SIGNIN);
+    } else if (httpPath == "/signin/validation") {
+        httpResponse = signinValidationHandler(http, store);
     } else if (httpPath == "/home") {
-        httpResponse = homeHandler(httpRequest);
+    //    httpResponse = homeHandler(http);
     } else if (httpPath == "/") {
-        httpResponse = rootHandler(httpRequest);
+        httpResponse = rootHandler(session);
     } else if (httpPath == "/signout") {
         httpResponse = signoutHandler(httpRequest);
     } else if (httpPath == "/download") {
-        httpResponse = downloadHandler(httpRequest);
+    //    httpResponse = downloadHandler(httpRequest);
     } else if (httpPath == "/delete") {
-        httpResponse = deleteFileHandler(httpRequest);
+    //    httpResponse = deleteFileHandler(httpRequest);
     } else {
-        httpResponse = getNotFoundResponse();
+        httpResponse = generateHTTPResponse(CODE_NOT_FOUND_404, PAGE_NOT_FOUND);
     }
 
     ssize_t bytesSent = send(clientSocket, httpResponse.c_str(), httpResponse.size(), 0);
 
     if (bytesSent == -1) {
-        log(ERROR, "Ошибка при отправке данных клиенту");
+        Helper::log(ERROR, "Ошибка при отправке данных клиенту");
     }
 
     // Закрытие сокета клиента
@@ -376,7 +302,7 @@ int main() {
     // Создание сокета
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket == -1) {
-        log(ERROR, "Ошибка создания сокета");
+        Helper::log(ERROR, "Ошибка создания сокета");
         return -1;
     }
 
@@ -389,19 +315,19 @@ int main() {
 
     // Привязка сокета к адресу и порту
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
-        log(ERROR, "Ошибка привязки сокета");
+        Helper::log(ERROR, "Ошибка привязки сокета");
         close(serverSocket);
         return -1;
     }
 
     // Прослушивание порта
     if (listen(serverSocket, 10) == -1) {
-        log(ERROR, "Ошибка прослушивания порта");
+        Helper::log(ERROR, "Ошибка прослушивания порта");
         close(serverSocket);
         return -1;
     }
 
-    log(INFO, "Сервер запущен. Ожидание подключений...");
+    Helper::log(INFO, "Сервер запущен. Ожидание подключений...");
 
     // Принятие соединений и обработка данных
     while (true) {
@@ -411,14 +337,14 @@ int main() {
         // Принятие соединения
         int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddress, &clientAddressLength);
         if (clientSocket == -1) {
-            log(ERROR, "Ошибка при принятии соединения");
+            Helper::log(ERROR, "Ошибка при принятии соединения");
             continue;
         }
 
         char clientIP[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(clientAddress.sin_addr), clientIP, INET_ADDRSTRLEN);
         std::string ipAddress(clientIP);
-        log(INFO, "Подключен клиент: " +  ipAddress);
+        Helper::log(INFO, "Подключен клиент: " +  ipAddress);
 
         // Обработка данных от клиента
         handleClient(clientSocket);

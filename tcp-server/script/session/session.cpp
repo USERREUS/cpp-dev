@@ -12,12 +12,27 @@ std::string Session::getUUID() {
     return UUID;
 }
 
+void Session::setUUID(std::string UUID) {
+    this->UUID = UUID;
+}
+
 void Session::set(std::string name, std::string value) {
     client.Set(UUID + name, value);
 }
 
 std::string Session::get(std::string name) {
     return client.Get(UUID + name);
+}
+
+Session::~Session() {}
+
+bool Session::IsValid() { 
+    Helper::log(INFO, "GET " + UUID + LOGIN + " : " + get(LOGIN));
+    if(get(LOGIN) == "")
+    {
+        return false;
+    }
+    return true;
 }
 
 std::string Session::generateUUID() {

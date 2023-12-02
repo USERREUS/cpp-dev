@@ -4,9 +4,9 @@ RedisClient::RedisClient(const std::string& host, int port) {
     context_ = redisConnect(host.c_str(), port);
     if (context_ == nullptr || context_->err) {
         if (context_) {
-            std::cerr << "Error connecting to Redis: " << context_->errstr << std::endl;
+            Helper::log(ERROR, "Error connecting to Redis");
         } else {
-            std::cerr << "Failed to allocate memory for redisContext" << std::endl;
+            Helper::log(ERROR, "Failed to allocate memory for redisContext");
         }
         exit(1);
     }

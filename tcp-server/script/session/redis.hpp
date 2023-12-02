@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <hiredis/hiredis.h>
+#include "../helper/helper.hpp"
 
 class RedisClient {
 private:

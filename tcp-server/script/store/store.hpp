@@ -5,26 +5,26 @@
 #include <string>
 #include <fstream>
 #include "../helper/helper.hpp"
+#include <openssl/sha.h>
+
+//g++ -o test store_test.cpp ../helper/helper.cpp store.cpp -lcrypto
+
+const std::string PASSWORD = "password"; //???
 
 class Store {
 private:
-    std::string name;
+    std::string fileName = "store.txt";
+    std::ifstream in;
+    std::ofstream out;
     std::map<std::string, std::map<std::string, std::string>> data;
-
-    std::string getNextId();
-    std::string linePretty(std::string id, std::map<std::string, std::string> dict);
     std::map<std::string, std::map<std::string, std::string>> parse(std::ifstream& in);
+    std::string hashPassword(const std::string& password);
 
 public:
     Store();
     Store(std::string fileName);
-    std::string AppendData(std::string record);
-    std::string AppendData(std::map<std::string, std::string> dict);
-    std::string DeleteOne(std::string ID);
-    std::string GetOne(std::string ID);
-    std::string GetAll();
-    bool emailValidation(std::string email);
-    bool dataValidation(std::string email, std::string pass);
+    bool SignUP(std::map<std::string, std::string>& dict);
+    bool SignIN(std::map<std::string, std::string>& dict);
     ~Store();
 };
 

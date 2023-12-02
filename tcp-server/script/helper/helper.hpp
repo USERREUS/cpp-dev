@@ -4,11 +4,20 @@
 #include <map>
 #include <string>
 
+enum LogLevel {
+    INFO,
+    DEBUG,
+    ERROR
+};
+
+const std::string LOGIN = "login";
+
 class Helper {
 public:
+    static void log(LogLevel level, const std::string& message);
+    static std::string readFile(const std::string& filename);
     static std::string encodeData(const std::map<std::string, std::string>& data);
     static std::string urlEncode(const std::string& data);
-    static std::string getenvHandler(const char* name);
     static std::string trim(const std::string& s);
     static std::map<std::string, std::string> parseForm(const std::string &input);
     static std::map<std::string, std::string> parseCookies(const std::string& cookies);
