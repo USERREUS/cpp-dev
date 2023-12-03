@@ -40,10 +40,12 @@ const std::string BOUNDARY = "boundary=";
 class HTTP {
 public:
     HTTP(const std::string& httpRequest);
-    UploadedFile* getFile(std::string name);
+    UploadedFile getFile(std::string name);
+    void moveFiles(const std::string& dir);
     std::string getHeader(const std::string& name);
     std::string getCookie(const std::string& name);
     std::string httpPOST(const std::string& name);
+    std::string httpGET(const std::string& name);
     ~HTTP();
 
 private:
@@ -52,18 +54,18 @@ private:
 	std::map <std::string, std::string> getData;
 	std::map <std::string, std::string> postData;
 	std::map <std::string, std::string> cookieData;
-    std::map<std::string, UploadedFile*> filesData;
+    std::map<std::string, UploadedFile> filesData;
 
     bool isMultipart = false;
     bool isURLEncoded = false;
     std::filesystem::path tempDir;
     std::string boundary;
 
-    std::map<std::string, UploadedFile*> parseMultipartFormData(const std::string& data, const std::string boundary);
+    std::map<std::string, UploadedFile> parseMultipartFormData(const std::string& data, const std::string boundary);
     void checkMultipart();
     void checkURLEncoded();
     void MultipartHandler();
-    bool move_uploaded_file(const UploadedFile* file, const std::string& path);
+    bool move_uploaded_file(UploadedFile file, const std::string& path);
     std::string getPostData();
 };
 

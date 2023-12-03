@@ -27,6 +27,7 @@ public:
     static std::string extractHeader(const std::string& httpRequest, const std::string& headerName);
     static std::string extractQueryString(const std::string& httpRequest);
     static std::string extractPath(const std::string& httpRequest);
+    static std::string changeSpecSymb(const std::string& str);
 };
 
 #endif // HELPER_HPP

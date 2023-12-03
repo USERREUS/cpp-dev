@@ -116,10 +116,10 @@ std::map<std::string, std::string> Helper::parseForm(const std::string &input) {
         pos = ampersandPos + 1;
 
         // URL-decode key and value
-        //key = trim(urlDecode(key));
-        //value = trim(urlDecode(value));
+        key = changeSpecSymb(trim(urlDecode(key)));
+        value = changeSpecSymb(trim(urlDecode(value)));
 
-        result[trim(key)] = value;
+        result[key] = value;
     }
 
     return result;
@@ -137,9 +137,9 @@ std::map<std::string, std::string> Helper::parseCookies(const std::string& cooki
 
         if (std::getline(cookiePairStream, key, '=')) {
             std::getline(cookiePairStream, value);
-            //key = trim(urlDecode(key));
-            //value = trim(urlDecode(value));
-            cookieMap[trim(key)] = value;
+            key = changeSpecSymb(trim(urlDecode(key)));
+            value = changeSpecSymb(trim(urlDecode(value)));
+            cookieMap[key] = value;
         }
     }
 
@@ -158,6 +158,26 @@ std::string Helper::generateRandomString(int length) {
     }
 
     return randomString;
+}
+
+std::string Helper::changeSpecSymb(const std::string& str) { 
+    std::string result;
+    for (std::size_t i = 0; i < str.length(); i++) {
+        if (str[i] == '<') {
+            result += "lt";
+        } else if (str[i] == '>') {
+            result += "gt";
+        } else if (str[i] == '&') {
+            result += "amp";
+        } else if (str[i] == '\"') {
+            result += "quot";
+        } else if (str[i] == '\'') {
+            result += "39";
+        } else {
+            result += str[i];
+        }
+    }
+    return result;
 }
 
 std::string Helper::urlDecode(const std::string& str) {

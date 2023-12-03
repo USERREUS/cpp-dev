@@ -23,6 +23,7 @@ const std::string PAGE_NOT_FOUND = "<!DOCTYPE html><html lang=\"en\"><head><meta
 
 const std::string CODE_NOT_FOUND_404 = "404 Not Found";
 const std::string CODE_OK_200 = "200 OK";
+const std::string CODE_401_UNAUTHORIZED = "401 Unauthorized";
 
 const std::string HTML_FILEPATH_ROOT_UNAUTORIZED = "html/rootunauthorized.html";
 const std::string HTML_FILEPATH_ROOT_AUTORIZED   = "html/rootauthorized.html";
@@ -30,6 +31,7 @@ const std::string HTML_FILEPATH_SIGNUP = "html/signup.html";
 const std::string HTML_FILEPATH_SIGNIN = "html/signin.html";
 const std::string HTML_FILEPATH_SIGNUP_ERR = "html/signuperr.html";
 const std::string HTML_FILEPATH_SIGNIN_ERR = "html/signinerr.html";
+const std::string HTML_FILEPATH_UNAUTHORIZED = "html/unauthorized.html";
 
 const std::string REDIRECT_SIGNIN   = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/signin\r\n\r\n";
 const std::string REDIRECT_HOME     = "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n";
@@ -71,25 +73,61 @@ std::string getHomePage(const std::string& login) {
     return generateHTTPResponse(CODE_OK_200, htmlContent);
 }
 
-// bool signinDataValidation(const std::string& httpRequest) {
-//     std::string postData = handlePostData(httpRequest);
-//     auto auth_params = Helper::parseForm(postData);
-//     if (auth_params.find("email") != auth_params.end() && auth_params.find("password") != auth_params.end()) {
-//         Store store = Store();
-//         return store.dataValidation(auth_params["email"], auth_params["password"]);
-//     }
-//     return false;
-// }
+std::string generateFileList(const std::string& directoryPath) {
+    std::stringstream html;
 
-std::string rootHandler(Session& session) { 
-    if(session.IsValid()) {
-        Helper::log(INFO, "Valid Session");
-        return getResponse(HTML_FILEPATH_ROOT_AUTORIZED);
+    html << "<!DOCTYPE html>\n"
+            "<html lang=\"en\">\n"
+            "<head>\n"
+            "    <meta charset=\"UTF-8\">\n"
+            "    <title>Home page</title>\n"
+            "</head>\n"
+            "<body>\n"
+            "   <h1>Wellcome to the home page, " + directoryPath + "!</h1>\n"
+            "<form action=\"/upload\" method=\"post\" enctype=\"multipart/form-data\">\n"
+            "    <label for=\"file\">Select File:</label>\n"
+            "    <input type=\"file\" name=\"file\" id=\"file\" required>\n"
+            "    <br>\n"
+            "    <input type=\"submit\" value=\"Upload\">\n"
+            "</form>\n"
+            "    <h2>File List</h2>\n"
+            "    <ul>\n";
+
+    for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
+        if (entry.is_regular_file()) {
+            std::string fileName = entry.path().filename().string();
+            html << "        <li>" << fileName << " - "
+                 << "<a href=\"/download?file=" << fileName << "\">Download</a> | "
+                 << "<a href=\"/delete?file=" << fileName << "\">Delete</a>"
+                 << "</li>\n";
+        }
     }
-    Helper::log(INFO, "Not valid Session");
-    return getResponse(HTML_FILEPATH_ROOT_UNAUTORIZED);
+
+    html << "    </ul><br>\n"
+            "    <a href=\"/signout\"><button>Sign Out</button></a>\n"
+            "</body>\n"
+            "</html>\n";
+
+    return html.str();
 }
-//std::string homeHandler(HTTP* http) { return http->IsValidSession() ? generateHTTPResponse(http_cns[OK_200], generateFileList(http->getSessionVal("login"))) : generateHTTPResponse(http_cns[NOT_FOUND_404], html_pns[NOT_FOUND]); }
+
+std::string rootHandler(Session& session) { return session.IsValid() ? getResponse(HTML_FILEPATH_ROOT_AUTORIZED) : getResponse(HTML_FILEPATH_ROOT_UNAUTORIZED); }
+std::string homeHandler(HTTP& http, Session& session) { 
+    if (session.IsValid()) {
+        return generateHTTPResponse(CODE_OK_200, generateFileList(session.get(LOGIN)));
+    } else {
+        return generateHTTPResponse(CODE_401_UNAUTHORIZED, Helper::readFile(HTML_FILEPATH_UNAUTHORIZED)); 
+    }
+}
+
+std::string uploadFileHandler(HTTP& http, Session& session) { 
+    if (session.IsValid()) {
+        http.moveFiles(session.get(LOGIN));
+        return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";
+
+    }
+    return generateHTTPResponse(CODE_401_UNAUTHORIZED, Helper::readFile(HTML_FILEPATH_UNAUTHORIZED)); 
+}
 
 std::string signinValidationHandler(HTTP& http, Store& store) {
     std::string httpMethod = http.getHeader(HTTP_METHOD);
@@ -113,25 +151,13 @@ std::string signinValidationHandler(HTTP& http, Store& store) {
     return generateHTTPResponse(CODE_NOT_FOUND_404, PAGE_NOT_FOUND);
 }
 
-// void makeUserDir(const std::string& name) {
-//     if (mkdir(name.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0) {
-//         log(INFO, "Directory created: " + name);
-//     } else {
-//         log(ERROR, "Error creating directory");
-//     }
-// }
-
-// bool signupDataValidation(const std::string& httpRequest) {
-//     Store store = Store();
-//     std::string postData = handlePostData(httpRequest);
-//     auto params = Helper::parseForm(postData);
-//     if (params.find("email") == params.end() || !store.emailValidation(params["email"])) {
-//         return false;
-//     }
-//     makeUserDir(params["email"]);
-//     store.AppendData(postData);
-//     return true;
-// }
+void makeUserDir(const std::string& name) {
+    if (mkdir(name.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0) {
+        Helper::log(INFO, "makeUserDir: User directory created: " + name);
+    } else {
+        Helper::log(ERROR, "makeUserDir: Error creating directory");
+    }
+}
 
 std::string signupValidationHandler(HTTP& http, Store& store) {
     std::string httpMethod = http.getHeader(HTTP_METHOD);
@@ -143,6 +169,7 @@ std::string signupValidationHandler(HTTP& http, Store& store) {
             signup_params[LOGIN]    = login;
             signup_params[PASSWORD] = pass;
             if (store.SignUP(signup_params)) {
+                makeUserDir(login);
                 return REDIRECT_SIGNIN;
             }
             Helper::log(ERROR, "signupValidationHandler: incorrect params");
@@ -156,93 +183,51 @@ std::string signoutHandler(const std::string& httpRequest) {
     return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/\r\nSet-Cookie: session=00000000-0000-0000-0000-000000000000\r\n\r\n";
 }
 
-std::string generateFileList(const std::string& directoryPath) {
-    std::stringstream html;
-
-    html << "<!DOCTYPE html>\n"
-            "<html lang=\"en\">\n"
-            "<head>\n"
-            "    <meta charset=\"UTF-8\">\n"
-            "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
-            "    <title>File List</title>\n"
-            "</head>\n"
-            "<body>\n"
-            "    <a href=\"/signout\"><button>Sign Out</button></a>\n"
-            "<form method=\"post\" enctype=\"multipart/form-data\">\n"
-            "    <label for=\"file\">Select File:</label>\n"
-            "    <input type=\"file\" name=\"file\" id=\"file\" required>\n"
-            "    <br>\n"
-            "    <input type=\"submit\" value=\"Upload\">\n"
-            "</form>\n"
-            "    <h2>File List</h2>\n"
-            "    <ul>\n";
-
-    for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
-        if (entry.is_regular_file()) {
-            std::string fileName = entry.path().filename().string();
-            html << "        <li>" << fileName << " - "
-                 << "<a href=\"/download?file=" << fileName << "\">Download</a> | "
-                 << "<a href=\"/delete?file=" << fileName << "\">Delete</a>"
-                 << "</li>\n";
-        }
+std::string sendFile(const std::string& filePath) {
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        Helper::log(ERROR, "Error opening file: " + filePath);
+        return generateHTTPResponse(CODE_NOT_FOUND_404, PAGE_NOT_FOUND);
     }
 
-    html << "    </ul>\n"
-            "</body>\n"
-            "</html>\n";
+    std::ostringstream fileContent;
+    fileContent << file.rdbuf();
+    file.close();
 
-    return html.str();
+    std::string response = "HTTP/1.0 200 OK\r\n";
+    response += "Content-Type: application/octet-stream\r\n";
+    response += "Content-Disposition: attachment; filename=\"" + std::filesystem::path(filePath).filename().string() + "\"\r\n";
+    response += "Content-Length: " + std::to_string(fileContent.str().size()) + "\r\n";
+    response += "\r\n" + fileContent.str();
+
+    return response;
 }
 
-// std::string sendFile(const std::string& filePath) {
-//     std::ifstream file(filePath, std::ios::binary);
-//     if (!file.is_open()) {
-//         log(ERROR, "Error opening file: " + filePath);
-//         return getNotFoundResponse();
-//     }
+void deleteFile(const std::string& filePath) {
+    if (remove(filePath.c_str()) != 0) {
+        Helper::log(ERROR, "Error deleting file: " + filePath);
+    } else {
+        Helper::log(INFO, "File deleted successfully: " + filePath);
+    }
+}
 
-//     std::ostringstream fileContent;
-//     fileContent << file.rdbuf();
-//     file.close();
+std::string deleteFileHandler(HTTP& http, Session& session) {
+    if (session.IsValid()) {
+        Helper::log(INFO, "deleteFileHandler: " + http.httpGET("file"));
+        deleteFile(session.get(LOGIN) + "/" + http.httpGET("file"));
+    } 
 
-//     std::string response = "HTTP/1.1 200 OK\r\n";
-//     response += "Content-Type: application/octet-stream\r\n";
-//     response += "Content-Disposition: attachment; filename=\"" + std::filesystem::path(filePath).filename().string() + "\"\r\n";
-//     response += "Content-Length: " + std::to_string(fileContent.str().size()) + "\r\n";
-//     response += "\r\n" + fileContent.str();
+    return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";
+}
 
-//     return response;
-// }
-
-// void deleteFile(const std::string& filePath) {
-//     if (remove(filePath.c_str()) != 0) {
-//         log(ERROR, "Error deleting file: " + filePath);
-//     } else {
-//         log(INFO, "File deleted successfully: " + filePath);
-//     }
-// }
-
-// std::string deleteFileHandler(const std::string& httpRequest) {
-//     std::string httpResponse;
-//     if (checkSession(httpRequest)) {
-//         deleteFile("sergsysoev%40gmail.com/images.jpeg");
-//     } else {
-//         httpResponse = getNotFoundResponse();
-//     }
-    
-//     return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";;
-// }
-
-// std::string downloadHandler(const std::string& httpRequest){
-//     std::string httpResponse;
-//     if (checkSession(httpRequest)) {
-//         httpResponse = sendFile("sergsysoev%40gmail.com/images.jpeg");
-//     } else {
-//         httpResponse = getNotFoundResponse();
-//     }
-    
-//     return httpResponse;
-// }
+std::string downloadHandler(HTTP& http, Session& session){
+    std::string httpResponse;
+    if (session.IsValid()) {
+        Helper::log(INFO, "downloadHandler: " + http.httpGET("file"));
+        return sendFile(session.get(LOGIN) + "/" + http.httpGET("file"));
+    } 
+    return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";
+}
 
 // Обработка данных от клиента
 void handleClient(int clientSocket) {
@@ -262,7 +247,6 @@ void handleClient(int clientSocket) {
     std::string httpResponse;
     std::string httpPath = http.getHeader(PATH);
     std::string uuid = http.getCookie(SESSION_UUID);
-    Helper::log(INFO, uuid);
     Session session(uuid);
     Store store;
 
@@ -275,15 +259,17 @@ void handleClient(int clientSocket) {
     } else if (httpPath == "/signin/validation") {
         httpResponse = signinValidationHandler(http, store);
     } else if (httpPath == "/home") {
-    //    httpResponse = homeHandler(http);
+        httpResponse = homeHandler(http, session);
     } else if (httpPath == "/") {
         httpResponse = rootHandler(session);
     } else if (httpPath == "/signout") {
         httpResponse = signoutHandler(httpRequest);
     } else if (httpPath == "/download") {
-    //    httpResponse = downloadHandler(httpRequest);
+        httpResponse = downloadHandler(http, session);
     } else if (httpPath == "/delete") {
-    //    httpResponse = deleteFileHandler(httpRequest);
+        httpResponse = deleteFileHandler(http, session);
+    } else if (httpPath == "/upload") {
+        httpResponse = uploadFileHandler(http, session);
     } else {
         httpResponse = generateHTTPResponse(CODE_NOT_FOUND_404, PAGE_NOT_FOUND);
     }

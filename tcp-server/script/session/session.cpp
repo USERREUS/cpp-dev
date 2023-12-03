@@ -26,14 +26,7 @@ std::string Session::get(std::string name) {
 
 Session::~Session() {}
 
-bool Session::IsValid() { 
-    Helper::log(INFO, "GET " + UUID + LOGIN + " : " + get(LOGIN));
-    if(get(LOGIN) == "")
-    {
-        return false;
-    }
-    return true;
-}
+bool Session::IsValid() { return get(LOGIN) == "" ? false : true; }
 
 std::string Session::generateUUID() {
     std::random_device rd;

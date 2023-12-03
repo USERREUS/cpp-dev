@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS=
+CFLAGS=-Wall
 LIBS=-lhiredis -lcrypto
 
 all: server
