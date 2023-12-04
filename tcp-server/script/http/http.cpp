@@ -91,6 +91,7 @@ std::map<std::string, UploadedFile> HTTP::parseMultipartFormData(const std::stri
 
         startPos = endPos + boundary.size() + 2; // Skip boundary and CRLF
     }
+    Helper::log(DEBUG, "parts.size(): " + std::to_string(parts.size()));
 
     for (const std::string& part : parts) {
         size_t contentDispositionPos = part.find("Content-Disposition: form-data;");
@@ -117,6 +118,7 @@ std::map<std::string, UploadedFile> HTTP::parseMultipartFormData(const std::stri
                 std::ofstream fileStream(file.tmp_name, std::ios::out | std::ios::binary);
 
                 if (!fileStream.is_open()) {
+                    Helper::log(ERROR, "parseMultipartFormData: !fileStream.is_open()");
                     continue;
                 }
 
@@ -147,6 +149,8 @@ std::string HTTP::httpGET(const std::string& name) {
 }
 
 void HTTP::MultipartHandler() {
+    Helper::log(DEBUG, "MultipartHandler");
+
     std::string postData = getPostData();
     filesData = parseMultipartFormData(postData, boundary);
 }
@@ -155,12 +159,16 @@ std::string HTTP::getHeader(const std::string& name) { return headers.find(name)
 
 // Функция для обработки POST-запроса
 std::string HTTP::getPostData() {
+    Helper::log(DEBUG, "getPostData");
     std::string contentType         = headers[CONTENT_TYPE];
     std::string httpContentLength   = headers[CONTENT_LENGTH];
     size_t contentLength            = std::stoi(httpContentLength);
+    Helper::log(DEBUG, "getPostData: contentLength = " + std::to_string(contentLength));
     size_t bodyStart                = httpRequest.find("\r\n\r\n") + 4;
+    if (bodyStart == std::string::npos) {
+        Helper::log(ERROR, "getPostData: bodyStart == std::string::npos");
+    }
     std::string postData            = httpRequest.substr(bodyStart, contentLength);
-
     return postData;
 }
 

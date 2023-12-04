@@ -124,7 +124,6 @@ std::string uploadFileHandler(HTTP& http, Session& session) {
     if (session.IsValid()) {
         http.moveFiles(session.get(LOGIN));
         return "HTTP/1.0 302 Found\r\nLocation: http://localhost:8080/home\r\n\r\n";
-
     }
     return generateHTTPResponse(CODE_401_UNAUTHORIZED, Helper::readFile(HTML_FILEPATH_UNAUTHORIZED)); 
 }
@@ -231,18 +230,29 @@ std::string downloadHandler(HTTP& http, Session& session){
 
 // Обработка данных от клиента
 void handleClient(int clientSocket) {
-    char buffer[1048576]; //1 MB
+    std::string httpRequest;
+    char buffer[10240]; //10 KB
+    Helper::log(DEBUG, "handleClient: sizeof(buffer) = " + std::to_string(sizeof(buffer)));
     ssize_t bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
-
+    Helper::log(DEBUG, "handleClient: bytesRead = " + std::to_string(bytesRead));
+    
     if (bytesRead <= 0) {
         Helper::log(ERROR, "Ошибка при чтении данных от клиента");
         close(clientSocket);
         return;
     }
 
-    // Разбиение HTTP-запроса на заголовки
-    std::string httpRequest(buffer, bytesRead);
+    while(bytesRead == sizeof(buffer)) {
+        std::string temp(buffer, bytesRead);
+        httpRequest += temp;
+        bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+        Helper::log(DEBUG, "handleClient: bytesRead = " + std::to_string(bytesRead));
+    }
 
+    std::string temp(buffer, bytesRead);
+    httpRequest += temp;
+
+    Helper::log(DEBUG, "handleClient: httpRequest lenght = " + std::to_string(httpRequest.length()));
     HTTP http(httpRequest);
     std::string httpResponse;
     std::string httpPath = http.getHeader(PATH);
