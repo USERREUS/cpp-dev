@@ -245,7 +245,7 @@ void handleClient(int clientSocket) {
     while(bytesRead == sizeof(buffer)) {
         std::string temp(buffer, bytesRead);
         httpRequest += temp;
-        bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+        bytesRead = recv(clientSocket, buffer, sizeof(buffer), MSG_WAITFORONE);
         Helper::log(DEBUG, "handleClient: bytesRead = " + std::to_string(bytesRead));
     }
 
@@ -294,6 +294,7 @@ void handleClient(int clientSocket) {
     close(clientSocket);
 }
 
+//Опции сокета, HTTP 1.0, отправить на уровне телнета
 int main() {
     // Создание сокета
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);

@@ -83,6 +83,9 @@ std::map<std::string, UploadedFile> HTTP::parseMultipartFormData(const std::stri
     while (true) {
         endPos = data.find(boundary + "--", startPos);
         if (endPos == std::string::npos) {
+            if (parts.size() > 0) {
+                parts[parts.size() - 1] = parts[parts.size() - 1].substr(0, parts[parts.size() - 1].length() - 4);
+            }
             break;
         }
 
